@@ -1,0 +1,78 @@
+name: Flutter Release (APK + AAB)
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build_release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.2'
+          channel: stable
+          cache: true
+
+      - name: Flutter Pub Get
+        working-directory: finance_manager_app
+        run: flutter pub get
+
+      - name: Build APK (release)
+        working-directory: finance_manager_app
+        run: flutter build apk --release --android-skip-build-dependency-validation
+
+      - name: Build AAB (release)
+        working-directory: finance_manager_app
+        # Workaround for "Release app bundle failed to strip debug symbols" on GitHub-hosted runners
+        # when apkanalyzer can't locate aapt2 (tools dir property not set).
+        run: flutter build appbundle --release --android-skip-build-dependency-validation --no-strip
+
+      - name: Prepare artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG_NAME="${GITHUB_REF_NAME}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          APP_NAME="finance-manager-app"
+
+          mkdir -p out
+          APK_SRC="finance_manager_app/build/app/outputs/flutter-apk/app-release.apk"
+          AAB_SRC="finance_manager_app/build/app/outputs/bundle/release/app-release.aab"
+
+          APK_OUT="out/${APP_NAME}-${TAG_NAME}-${SHORT_SHA}.apk"
+          AAB_OUT="out/${APP_NAME}-${TAG_NAME}-${SHORT_SHA}.aab"
+
+          cp "$APK_SRC" "$APK_OUT"
+          cp "$AAB_SRC" "$AAB_OUT"
+
+          (cd out && sha256sum "$(basename "$APK_OUT")" > "$(basename "$APK_OUT").sha256")
+          (cd out && sha256sum "$(basename "$AAB_OUT")" > "$(basename "$AAB_OUT").sha256")
+
+          ls -la out
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            out/*.apk
+            out/*.aab
+            out/*.sha256

@@ -1,0 +1,9 @@
+{
+  "Cà phê": ["cafe", "cf", "cà phê", "ca phe", "coffee"],
+  "Ăn uống": ["ăn", "uong", "uống", "an", "food", "com", "cơm", "trưa", "tối", "sáng"],
+  "Di chuyển": ["xăng", "grab", "taxi", "xe", "bus", "gửi xe", "parking"],
+  "Mua sắm": ["mua", "shopping", "shop", "siêu thị", "sieu thi", "mart"],
+  "Lương": ["lương", "luong", "salary"],
+  "Thưởng": ["thưởng", "thuong", "bonus"],
+  "Khác": ["khác", "khac", "other"]
+}

@@ -1,0 +1,16 @@
+[project]
+name = "finance-api"
+version = "0.1.0"
+description = "Finance sync API (FastAPI + JWT)"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.23",
+  "python-jose[cryptography]>=3.3",
+  "passlib[bcrypt]>=1.7",
+  "psycopg[binary]>=3.1",
+  "pydantic>=2.7",
+]
+
+[tool.uvicorn]
+factory = false

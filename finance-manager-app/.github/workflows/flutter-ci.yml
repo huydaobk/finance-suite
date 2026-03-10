@@ -1,0 +1,54 @@
+name: Flutter CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  analyze_test:
+    name: Analyze & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.2'
+          channel: stable
+          cache: true
+
+      - name: Flutter Pub Get
+        working-directory: finance_manager_app
+        run: flutter pub get
+
+      - name: Flutter Analyze
+        working-directory: finance_manager_app
+        run: flutter analyze
+
+      - name: Flutter Build APK (debug sanity)
+        working-directory: finance_manager_app
+        run: flutter build apk --debug --android-skip-build-dependency-validation
+
+      - name: Flutter Test
+        working-directory: finance_manager_app
+        run: |
+          set +e
+          flutter test
+          status=$?
+          # flutter test exits 79 when no tests are found
+          if [ "$status" -eq 79 ]; then
+            echo "No tests found. Skipping failure."
+            exit 0
+          fi
+          exit $status

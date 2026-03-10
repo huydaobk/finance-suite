@@ -1,0 +1,18 @@
+{
+  "@@locale": "vi",
+  "appTitle": "Quản lý tài chính",
+  "homeTab": "Tổng quan",
+  "transactionsTab": "Giao dịch",
+  "settingsTab": "Cài đặt",
+  "transactionsTitle": "Giao dịch",
+  "budgetsTitle": "Ngân sách",
+  "billsTitle": "Hóa đơn",
+  "alertsTitle": "Cảnh báo",
+  "receiptScanTitle": "Quét hóa đơn",
+  "settingsTitle": "Cài đặt",
+  "overview": "Tổng quan",
+  "noTransactions": "Chưa có giao dịch",
+  "noBudgets": "Chưa có ngân sách",
+  "noBills": "Chưa có hóa đơn",
+  "noAlerts": "Không có cảnh báo"
+}
