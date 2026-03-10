@@ -5,41 +5,116 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Kết nối tới finance-api để pull giao dịch từ Telegram.
 class FinanceSyncService {
+  FinanceSyncService({http.Client? httpClient})
+      : _httpClient = httpClient ?? http.Client();
+
   static const _prefKeyToken = 'finance_api_token';
   static const _prefKeyLastSync = 'finance_api_last_sync';
   static const _prefKeyBaseUrl = 'finance_api_url';
+
+  final http.Client _httpClient;
 
   Future<String> _getBaseUrl() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_prefKeyBaseUrl);
     if (saved != null && saved.trim().isNotEmpty) return saved.trim();
 
-    // fallback build-time define (optional)
     const defined = String.fromEnvironment('FINANCE_API_URL', defaultValue: '');
     if (defined.trim().isNotEmpty) return defined.trim();
 
-    // dev fallback
     return 'http://10.0.2.2:8089';
   }
 
   Future<Uri> get _syncUri async => Uri.parse('${await _getBaseUrl()}/sync');
   Future<Uri> get _ackUri async => Uri.parse('${await _getBaseUrl()}/sync/ack');
+  Future<Uri> get _loginUri async => Uri.parse('${await _getBaseUrl()}/auth/login');
 
-  /// Lấy JWT token (cache vào SharedPreferences).
-  ///
-  /// Hiện tại app chỉ dùng token đã lưu sẵn ở local. Không commit credential vào mã nguồn.
-  /// Nếu sau này cần login tương tác, nên chuyển sang flow nhập token / refresh token
-  /// hoặc secure storage thay vì hardcode username/password.
   Future<String> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getString(_prefKeyToken);
     if (cached != null && cached.isNotEmpty) return cached;
     throw const FinanceSyncException(
-      'Chưa có token đồng bộ. Hãy cấu hình FINANCE_API_URL và lưu token trước khi sync.',
+      'Chưa đăng nhập đồng bộ. Hãy nhập FINANCE_API_URL, tài khoản và mật khẩu rồi thử lại.',
     );
   }
 
-  /// Pull danh sách giao dịch chưa sync từ server.
+  Future<void> saveBaseUrl(String baseUrl) async {
+    final prefs = await SharedPreferences.getInstance();
+    final normalized = baseUrl.trim();
+    if (normalized.isEmpty) {
+      await prefs.remove(_prefKeyBaseUrl);
+      return;
+    }
+    await prefs.setString(_prefKeyBaseUrl, normalized);
+  }
+
+  Future<void> clearAuth() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefKeyToken);
+  }
+
+  Future<bool> hasSavedToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_prefKeyToken);
+    return token != null && token.trim().isNotEmpty;
+  }
+
+  Future<LoginResult> login({
+    required String baseUrl,
+    required String username,
+    required String password,
+  }) async {
+    final normalizedBaseUrl = baseUrl.trim();
+    final normalizedUsername = username.trim();
+    final normalizedPassword = password.trim();
+
+    if (normalizedBaseUrl.isEmpty) {
+      throw const FinanceSyncException('FINANCE_API_URL không được để trống.');
+    }
+    if (normalizedUsername.isEmpty) {
+      throw const FinanceSyncException('Username không được để trống.');
+    }
+    if (normalizedPassword.isEmpty) {
+      throw const FinanceSyncException('Password không được để trống.');
+    }
+
+    await saveBaseUrl(normalizedBaseUrl);
+
+    final resp = await _httpClient
+        .post(
+          await _loginUri,
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'username': normalizedUsername,
+            'password': normalizedPassword,
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (resp.statusCode != 200) {
+      throw FinanceSyncException(
+        _buildApiError(
+          fallback:
+              'Đăng nhập thất bại (${resp.statusCode}). Kiểm tra lại URL hoặc tài khoản.',
+          responseBody: resp.body,
+        ),
+      );
+    }
+
+    final decoded = jsonDecode(resp.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const FinanceSyncException(
+        'Response /auth/login không đúng format.',
+      );
+    }
+
+    final result = LoginResult.fromJson(decoded);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefKeyToken, result.token);
+    await prefs.setString(_prefKeyBaseUrl, normalizedBaseUrl);
+    return result;
+  }
+
   Future<List<InboxTx>> fetchPending() async {
     final prefs = await SharedPreferences.getInstance();
     final lastSync = prefs.getString(_prefKeyLastSync);
@@ -51,7 +126,7 @@ class FinanceSyncService {
             ? {'since': lastSync}
             : null,
       );
-      final resp = await http
+      final resp = await _httpClient
           .get(
             uri,
             headers: {'Authorization': 'Bearer $token'},
@@ -60,7 +135,10 @@ class FinanceSyncService {
 
       if (resp.statusCode != 200) {
         throw FinanceSyncException(
-          'Lấy dữ liệu sync thất bại (${resp.statusCode}): ${resp.body}',
+          _buildApiError(
+            fallback: 'Lấy dữ liệu sync thất bại (${resp.statusCode}).',
+            responseBody: resp.body,
+          ),
         );
       }
 
@@ -77,19 +155,18 @@ class FinanceSyncService {
           .toList();
     }
 
-    var token = await _getToken();
+    final token = await _getToken();
     try {
       return await runWithToken(token);
     } on FinanceSyncException catch (e) {
       if (!e.message.contains('(401)')) rethrow;
-      await prefs.remove(_prefKeyToken);
+      await clearAuth();
       throw const FinanceSyncException(
-        'Token sync đã hết hạn hoặc không hợp lệ (401). Hãy cấp token mới rồi thử lại.',
+        'Phiên đăng nhập sync đã hết hạn hoặc không hợp lệ (401). Vui lòng đăng nhập lại.',
       );
     }
   }
 
-  /// Ack các ID đã import vào DB local.
   Future<void> ack(List<int> ids) async {
     if (ids.isEmpty) return;
 
@@ -97,7 +174,7 @@ class FinanceSyncService {
 
     Future<void> runWithToken(String token) async {
       final ackUri = await _ackUri;
-      final resp = await http
+      final resp = await _httpClient
           .post(
             ackUri,
             headers: {
@@ -110,7 +187,10 @@ class FinanceSyncService {
 
       if (resp.statusCode != 200) {
         throw FinanceSyncException(
-          'Ack sync thất bại (${resp.statusCode}): ${resp.body}',
+          _buildApiError(
+            fallback: 'Ack sync thất bại (${resp.statusCode}).',
+            responseBody: resp.body,
+          ),
         );
       }
 
@@ -120,16 +200,32 @@ class FinanceSyncService {
       );
     }
 
-    var token = await _getToken();
+    final token = await _getToken();
     try {
       await runWithToken(token);
     } on FinanceSyncException catch (e) {
       if (!e.message.contains('(401)')) rethrow;
-      await prefs.remove(_prefKeyToken);
+      await clearAuth();
       throw const FinanceSyncException(
-        'Token sync đã hết hạn hoặc không hợp lệ (401). Hãy cấp token mới rồi thử lại.',
+        'Phiên đăng nhập sync đã hết hạn hoặc không hợp lệ (401). Vui lòng đăng nhập lại.',
       );
     }
+  }
+
+  String _buildApiError({
+    required String fallback,
+    required String responseBody,
+  }) {
+    try {
+      final decoded = jsonDecode(responseBody);
+      if (decoded is Map<String, dynamic>) {
+        final detail = decoded['detail'];
+        if (detail is String && detail.trim().isNotEmpty) {
+          return '$fallback ${detail.trim()}';
+        }
+      }
+    } catch (_) {}
+    return '$fallback $responseBody';
   }
 }
 
@@ -140,6 +236,40 @@ class FinanceSyncException implements Exception {
 
   @override
   String toString() => message;
+}
+
+class LoginResult {
+  const LoginResult({
+    required this.token,
+    required this.tokenType,
+    required this.expiresInDays,
+  });
+
+  final String token;
+  final String tokenType;
+  final int? expiresInDays;
+
+  factory LoginResult.fromJson(Map<String, dynamic> json) {
+    final dynamic tokenValue = json['access_token'] ?? json['token'];
+    if (tokenValue is! String || tokenValue.trim().isEmpty) {
+      throw const FinanceSyncException(
+        'Response /auth/login thiếu access_token/token hợp lệ.',
+      );
+    }
+
+    final dynamic tokenTypeValue = json['token_type'];
+    final dynamic expiresValue = json['expires_in_days'];
+
+    return LoginResult(
+      token: tokenValue.trim(),
+      tokenType: tokenTypeValue is String && tokenTypeValue.trim().isNotEmpty
+          ? tokenTypeValue.trim()
+          : 'bearer',
+      expiresInDays: expiresValue is int
+          ? expiresValue
+          : int.tryParse(expiresValue?.toString() ?? ''),
+    );
+  }
 }
 
 class InboxTx {

@@ -29,7 +29,7 @@ class Settings:
         secret_file = os.environ.get("JWT_SECRET_FILE")
         self.jwt_secret = _read_file(secret_file) if secret_file else os.environ.get("JWT_SECRET", "change-me")
         self.jwt_alg = os.environ.get("JWT_ALG", "HS256")
-        self.jwt_expire_days = int(os.environ.get("JWT_EXPIRE_DAYS", "14"))
+        self.jwt_expire_days = int(os.environ.get("JWT_EXPIRE_DAYS", os.environ.get("JWT_EXPIRES_DAYS", "14")))
 
         self.admin_username = os.environ.get("ADMIN_USERNAME", "huy")
         self.admin_password_bcrypt = os.environ.get("ADMIN_PASSWORD_BCRYPT", "")

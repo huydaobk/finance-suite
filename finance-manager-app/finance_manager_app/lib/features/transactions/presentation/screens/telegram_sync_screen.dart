@@ -17,39 +17,90 @@ class TelegramSyncScreen extends StatefulWidget {
 class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
   final _svc = FinanceSyncService();
 
-  final _tokenCtrl = TextEditingController();
   final _urlCtrl = TextEditingController();
+  final _usernameCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
 
   List<InboxTx> _pending = [];
   Set<int> _selected = {};
   bool _loading = false;
   bool _importing = false;
+  bool _loggingIn = false;
+  bool _obscurePassword = true;
+  bool _hasToken = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _loadPrefs();
-    _fetch();
+    _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    _urlCtrl.dispose();
+    _usernameCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _bootstrap() async {
+    await _loadPrefs();
+    if (_hasToken) {
+      await _fetch();
+    }
   }
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    _tokenCtrl.text = prefs.getString('finance_api_token') ?? '';
     _urlCtrl.text = prefs.getString('finance_api_url') ?? '';
+    _hasToken = await _svc.hasSavedToken();
     if (mounted) setState(() {});
   }
 
-  Future<void> _savePrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = _tokenCtrl.text.trim();
-    final url = _urlCtrl.text.trim();
-    if (token.isNotEmpty) await prefs.setString('finance_api_token', token);
-    if (url.isNotEmpty) await prefs.setString('finance_api_url', url);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã lưu cấu hình đồng bộ ✅')),
+  Future<void> _handleUnauthorized() async {
+    await _svc.clearAuth();
+    _pending = [];
+    _selected.clear();
+    _hasToken = false;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _login() async {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _loggingIn = true;
+      _error = null;
+    });
+
+    try {
+      await _svc.login(
+        baseUrl: _urlCtrl.text,
+        username: _usernameCtrl.text,
+        password: _passwordCtrl.text,
       );
+      _passwordCtrl.clear();
+      _hasToken = true;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đăng nhập thành công ✅')),
+        );
+      }
+      await _fetch();
+    } on FinanceSyncException catch (e) {
+      setState(() {
+        _hasToken = false;
+        _error = e.message;
+      });
+    } catch (e) {
+      setState(() {
+        _hasToken = false;
+        _error = 'Không thể đăng nhập: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _loggingIn = false);
+      }
     }
   }
 
@@ -61,10 +112,14 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
     try {
       final items = await _svc.fetchPending();
       setState(() {
+        _hasToken = true;
         _pending = items;
-        _selected = items.map((e) => e.id).toSet(); // chọn tất cả mặc định
+        _selected = items.map((e) => e.id).toSet();
       });
     } on FinanceSyncException catch (e) {
+      if (e.message.contains('(401)')) {
+        await _handleUnauthorized();
+      }
       setState(() => _error = e.message);
     } catch (e) {
       setState(() => _error = 'Không kết nối được server: $e');
@@ -77,13 +132,15 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
 
   Future<void> _importSelected() async {
     if (_selected.isEmpty) return;
-    setState(() => _importing = true);
+    setState(() {
+      _importing = true;
+      _error = null;
+    });
 
     try {
       final db = AppDatabase.instance;
       final toImport = _pending.where((t) => _selected.contains(t.id)).toList();
 
-      // Resolve category/wallet IDs from DB
       final categories = await db.select(db.categories).get();
       final wallets = await db.select(db.wallets).get();
 
@@ -161,7 +218,6 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
         importedIds.add(tx.id);
       }
 
-      // Ack server
       await _svc.ack(importedIds);
 
       if (mounted) {
@@ -170,10 +226,22 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
         ));
         Navigator.of(context).pop(true);
       }
-    } catch (e) {
+    } on FinanceSyncException catch (e) {
+      if (e.message.contains('(401)')) {
+        await _handleUnauthorized();
+      }
+      setState(() => _error = e.message);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi import: $e')),
+          SnackBar(content: Text(e.message)),
+        );
+      }
+    } catch (e) {
+      final message = 'Lỗi import: $e';
+      setState(() => _error = message);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
         );
       }
     } finally {
@@ -181,159 +249,252 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
     }
   }
 
+  Widget _buildLoginForm() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Icon(Icons.lock_outline, size: 56, color: Colors.blueGrey),
+              const SizedBox(height: 16),
+              Text(
+                'Đăng nhập để đồng bộ Telegram',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Nhập địa chỉ finance-api và tài khoản của anh. App sẽ tự lấy token, không cần dán JWT thủ công nữa.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: _urlCtrl,
+                keyboardType: TextInputType.url,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'FINANCE_API_URL',
+                  hintText: 'vd: http://14.225.222.53:8089',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _usernameCtrl,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Username',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _passwordCtrl,
+                obscureText: _obscurePassword,
+                onSubmitted: (_) => _loggingIn ? null : _login(),
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    tooltip: _obscurePassword ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
+                    onPressed: () => setState(
+                      () => _obscurePassword = !_obscurePassword,
+                    ),
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                    ),
+                  ),
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _loggingIn ? null : _login,
+                icon: _loggingIn
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.login),
+                label: Text(_loggingIn ? 'Đang đăng nhập...' : 'Đăng nhập'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle_outline, size: 48, color: Colors.green),
+          SizedBox(height: 12),
+          Text('Không có giao dịch mới từ Telegram'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPendingList() {
+    return Column(
+      children: [
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Material(
+              color: Theme.of(context).colorScheme.errorContainer,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _error!,
+                        style: TextStyle(
+                          color:
+                              Theme.of(context).colorScheme.onErrorContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Row(
+            children: [
+              Text(
+                '${_pending.length} giao dịch từ Telegram',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: () =>
+                    setState(() => _selected = _pending.map((e) => e.id).toSet()),
+                child: const Text('Chọn tất cả'),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _selected.clear()),
+                child: const Text('Bỏ chọn'),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView.separated(
+            itemCount: _pending.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (ctx, i) {
+              final tx = _pending[i];
+              final isSelected = _selected.contains(tx.id);
+              final isExpense = tx.type == 'expense';
+              final sign = isExpense ? '-' : '+';
+              return CheckboxListTile(
+                value: isSelected,
+                onChanged: (v) => setState(() {
+                  if (v == true) {
+                    _selected.add(tx.id);
+                  } else {
+                    _selected.remove(tx.id);
+                  }
+                }),
+                secondary: CircleAvatar(
+                  backgroundColor:
+                      isExpense ? Colors.red.shade50 : Colors.green.shade50,
+                  child: Icon(
+                    isExpense ? Icons.arrow_downward : Icons.arrow_upward,
+                    color: isExpense ? Colors.red : Colors.green,
+                    size: 18,
+                  ),
+                ),
+                title: Text(
+                  '$sign${formatVnd(tx.amountVnd)}₫',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: isExpense ? Colors.red : Colors.green,
+                  ),
+                ),
+                subtitle: Text(
+                  [
+                    if (tx.note != null) tx.note!,
+                    if (tx.category != null) tx.category!,
+                    tx.txDate,
+                  ].join(' · '),
+                ),
+                isThreeLine: false,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final showLogin = !_hasToken;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Đồng bộ từ Telegram'),
         centerTitle: true,
         actions: [
-          IconButton(
-            onPressed: _loading ? null : _fetch,
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Tải lại',
-          ),
+          if (!showLogin)
+            IconButton(
+              onPressed: _loading ? null : _fetch,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Tải lại',
+            ),
+          if (!showLogin)
+            IconButton(
+              onPressed: (_loading || _loggingIn)
+                  ? null
+                  : () async {
+                      await _handleUnauthorized();
+                      setState(() {
+                        _error = 'Đã đăng xuất sync. Vui lòng đăng nhập lại.';
+                      });
+                    },
+              icon: const Icon(Icons.logout),
+              tooltip: 'Đăng xuất sync',
+            ),
         ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
-                      const SizedBox(height: 12),
-                      Text(_error!, textAlign: TextAlign.center),
-                      const SizedBox(height: 16),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Column(
-                          children: [
-                            TextField(
-                              controller: _urlCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'FINANCE_API_URL',
-                                hintText:
-                                    'vd: http://14.225.222.53:8089 hoặc https://your-domain',
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: _tokenCtrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Token đồng bộ (JWT)',
-                                hintText: 'Dán token vào đây',
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: () async {
-                          await _savePrefs();
-                          await _fetch();
-                        },
-                        child: const Text('Lưu & Thử lại'),
-                      ),
-                    ],
-                  ),
-                )
+          : showLogin
+              ? _buildLoginForm()
               : _pending.isEmpty
-                  ? const Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.check_circle_outline,
-                              size: 48, color: Colors.green),
-                          SizedBox(height: 12),
-                          Text('Không có giao dịch mới từ Telegram'),
-                        ],
-                      ),
-                    )
-                  : Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                          child: Row(
-                            children: [
-                              Text(
-                                '${_pending.length} giao dịch từ Telegram',
-                                style: Theme.of(context).textTheme.titleSmall,
-                              ),
-                              const Spacer(),
-                              TextButton(
-                                onPressed: () => setState(() => _selected =
-                                    _pending.map((e) => e.id).toSet()),
-                                child: const Text('Chọn tất cả'),
-                              ),
-                              TextButton(
-                                onPressed: () =>
-                                    setState(() => _selected.clear()),
-                                child: const Text('Bỏ chọn'),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Divider(height: 1),
-                        Expanded(
-                          child: ListView.separated(
-                            itemCount: _pending.length,
-                            separatorBuilder: (_, __) =>
-                                const Divider(height: 1),
-                            itemBuilder: (ctx, i) {
-                              final tx = _pending[i];
-                              final isSelected = _selected.contains(tx.id);
-                              final isExpense = tx.type == 'expense';
-                              final sign = isExpense ? '-' : '+';
-                              return CheckboxListTile(
-                                value: isSelected,
-                                onChanged: (v) => setState(() {
-                                  if (v == true) {
-                                    _selected.add(tx.id);
-                                  } else {
-                                    _selected.remove(tx.id);
-                                  }
-                                }),
-                                secondary: CircleAvatar(
-                                  backgroundColor: isExpense
-                                      ? Colors.red.shade50
-                                      : Colors.green.shade50,
-                                  child: Icon(
-                                    isExpense
-                                        ? Icons.arrow_downward
-                                        : Icons.arrow_upward,
-                                    color:
-                                        isExpense ? Colors.red : Colors.green,
-                                    size: 18,
-                                  ),
-                                ),
-                                title: Text(
-                                  '$sign${formatVnd(tx.amountVnd)}₫',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color:
-                                        isExpense ? Colors.red : Colors.green,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  [
-                                    if (tx.note != null) tx.note!,
-                                    if (tx.category != null) tx.category!,
-                                    tx.txDate,
-                                  ].join(' · '),
-                                ),
-                                isThreeLine: false,
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-      bottomNavigationBar: _pending.isNotEmpty
+                  ? _buildEmptyState()
+                  : _buildPendingList(),
+      bottomNavigationBar: (!showLogin && _pending.isNotEmpty)
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(16),
