@@ -23,3 +23,11 @@ build/
 
 # OS
 .DS_Store
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Kotlin/Gradle caches
+**/.kotlin/
+*.salive
