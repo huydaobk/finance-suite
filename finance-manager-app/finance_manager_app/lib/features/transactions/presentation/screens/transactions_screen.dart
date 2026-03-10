@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/db/app_database.dart';
+import '../../../../core/utils/vnd_format.dart';
 import '../../../../core/transactions/transfer_metadata.dart';
 import '../../../budgets/presentation/screens/budgets_screen.dart';
 import 'add_transaction_screen.dart';
@@ -45,7 +46,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   DateTime get _monthFrom => DateTime(_month.year, _month.month, 1);
   DateTime get _monthTo => DateTime(_month.year, _month.month + 1, 1);
 
-  String get _monthLabel => '${_month.month.toString().padLeft(2, '0')}/${_month.year}';
+  String get _monthLabel =>
+      '${_month.month.toString().padLeft(2, '0')}/${_month.year}';
 
   Future<void> _openAddTransaction() async {
     final created = await Navigator.of(context).push<bool>(
@@ -183,7 +185,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               to: _monthTo,
             ),
             builder: (context, snap) {
-              final money = NumberFormat.decimalPattern('vi_VN');
               final s = snap.data;
               final income = s?.income ?? 0;
               final expense = s?.expense ?? 0;
@@ -218,7 +219,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         Expanded(
                           child: _SummaryTile(
                             label: 'Thu',
-                            value: '+${money.format(income)}₫',
+                            value: '+${formatVnd(income)}₫',
                             color: Colors.green,
                           ),
                         ),
@@ -226,7 +227,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         Expanded(
                           child: _SummaryTile(
                             label: 'Chi',
-                            value: '-${money.format(expense)}₫',
+                            value: '-${formatVnd(expense)}₫',
                             color: Colors.red,
                           ),
                         ),
@@ -234,7 +235,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         Expanded(
                           child: _SummaryTile(
                             label: 'Số dư',
-                            value: '${net >= 0 ? '+' : ''}${money.format(net)}₫',
+                            value: '${net >= 0 ? '+' : ''}${formatVnd(net)}₫',
                             color: netColor,
                           ),
                         ),
@@ -250,7 +251,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           totalBudget: totalBudget,
                           onSetupBudget: () {
                             Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => const BudgetsScreen()),
+                              MaterialPageRoute(
+                                  builder: (_) => const BudgetsScreen()),
                             );
                           },
                         );
@@ -282,7 +284,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   return const _TransactionsEmptyState();
                 }
 
-                final money = NumberFormat.decimalPattern('vi_VN');
                 final dateFmt = DateFormat('dd/MM');
 
                 return ListView.separated(
@@ -295,8 +296,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     final isTransfer = t.type == 'transfer';
                     final sign = t.type == 'expense' ? '-' : '+';
                     final amountText = isTransfer
-                        ? '↔ ${money.format(t.amount)}₫'
-                        : '$sign${money.format(t.amount)}₫';
+                        ? '↔ ${formatVnd(t.amount)}₫'
+                        : '$sign${formatVnd(t.amount)}₫';
                     final dateText = dateFmt.format(t.occurredAt);
                     final meta =
                         '${it.category.name} • ${it.wallet.name} • $dateText';
@@ -336,8 +337,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           final ok = await showDialog<bool>(
                             context: context,
                             builder: (_) => AlertDialog(
-                              title: Text(
-                                  isTransferPair ? 'Xóa chuyển ví?' : 'Xóa giao dịch?'),
+                              title: Text(isTransferPair
+                                  ? 'Xóa chuyển ví?'
+                                  : 'Xóa giao dịch?'),
                               content: Text(
                                 isTransferPair
                                     ? 'Xóa giao dịch chuyển ví này? Nếu đủ cặp, hệ thống sẽ xóa cả 2 giao dịch liên quan.\n\n${note.isEmpty ? '$amountText ($meta)' : '$amountText ($note)'}'
@@ -352,8 +354,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                 FilledButton(
                                   style: FilledButton.styleFrom(
                                       backgroundColor: Colors.red),
-                                  onPressed: () =>
-                                      Navigator.pop(context, true),
+                                  onPressed: () => Navigator.pop(context, true),
                                   child: const Text('Xóa'),
                                 ),
                               ],
@@ -487,10 +488,8 @@ class _SummaryTile extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             value,
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(color: color),
+            style:
+                Theme.of(context).textTheme.titleMedium?.copyWith(color: color),
           ),
         ],
       ),
@@ -511,8 +510,6 @@ class _MonthlyBudgetTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final money = NumberFormat.decimalPattern('vi_VN');
-
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -523,12 +520,14 @@ class _MonthlyBudgetTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Ngân sách tháng', style: Theme.of(context).textTheme.labelMedium),
+          Text('Ngân sách tháng',
+              style: Theme.of(context).textTheme.labelMedium),
           const SizedBox(height: 8),
           if (totalBudget == null || totalBudget! <= 0) ...[
             Row(
               children: [
-                const Expanded(child: Text('Chưa có budget tổng cho tháng này')),
+                const Expanded(
+                    child: Text('Chưa có budget tổng cho tháng này')),
                 TextButton(
                   onPressed: onSetupBudget,
                   child: const Text('Thiết lập budget'),
@@ -540,13 +539,14 @@ class _MonthlyBudgetTile extends StatelessWidget {
               builder: (context) {
                 final usedPercentRaw = expense / totalBudget!;
                 final usedPercent = usedPercentRaw.clamp(0, 1).toDouble();
-                final usedPercentText = (usedPercentRaw * 100).toStringAsFixed(1);
+                final usedPercentText =
+                    (usedPercentRaw * 100).toStringAsFixed(1);
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Đã dùng ${money.format(expense)}/${money.format(totalBudget)}₫ ($usedPercentText%)',
+                      'Đã dùng ${formatVnd(expense)}/${formatVnd(totalBudget!)}₫ ($usedPercentText%)',
                     ),
                     const SizedBox(height: 8),
                     LinearProgressIndicator(value: usedPercent),

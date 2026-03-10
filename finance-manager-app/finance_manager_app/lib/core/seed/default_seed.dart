@@ -25,6 +25,7 @@ class DefaultSeed {
               id: w.id,
               name: w.name,
               currency: const Value('VND'),
+              openingBalance: const Value(0),
             ),
           );
     }

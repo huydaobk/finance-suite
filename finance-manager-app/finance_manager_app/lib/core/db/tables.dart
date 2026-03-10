@@ -4,6 +4,7 @@ class Wallets extends Table {
   TextColumn get id => text()();
   TextColumn get name => text()();
   TextColumn get currency => text().withDefault(const Constant('VND'))();
+  IntColumn get openingBalance => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   @override
@@ -42,7 +43,8 @@ class Transactions extends Table {
 class Budgets extends Table {
   TextColumn get id => text()();
   TextColumn get month => text()(); // YYYY-MM
-  TextColumn get categoryId => text().nullable().references(Categories, #id)(); // null = total
+  TextColumn get categoryId =>
+      text().nullable().references(Categories, #id)(); // null = total
   IntColumn get limitAmount => integer()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
@@ -70,7 +72,8 @@ class AlertEvents extends Table {
   TextColumn get type => text()();
   TextColumn get titleVi => text()();
   TextColumn get bodyVi => text()();
-  TextColumn get status => text().withDefault(const Constant('new'))(); // new|seen|dismissed
+  TextColumn get status =>
+      text().withDefault(const Constant('new'))(); // new|seen|dismissed
   TextColumn get metaJson => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 

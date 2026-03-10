@@ -1,8 +1,8 @@
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/db/app_database.dart';
+import '../../../../core/utils/vnd_format.dart';
 
 class BudgetsScreen extends StatefulWidget {
   const BudgetsScreen({super.key});
@@ -29,7 +29,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     required List<Category> expenseCategories,
   }) async {
     final amountController = TextEditingController(
-      text: editing != null ? editing.limitAmount.toString() : '',
+      text: editing != null ? formatVnd(editing.limitAmount) : '',
     );
     String? selectedCategoryId = editing?.categoryId;
 
@@ -70,9 +70,10 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                   TextField(
                     controller: amountController,
                     keyboardType: TextInputType.number,
+                    inputFormatters: const [VndTextInputFormatter()],
                     decoration: const InputDecoration(
                       labelText: 'Mức chi tối đa (VND)',
-                      hintText: 'Ví dụ: 5000000',
+                      hintText: 'Ví dụ: 5.000.000',
                     ),
                   ),
                 ],
@@ -85,8 +86,8 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                 FilledButton(
                   onPressed: () async {
                     final raw = amountController.text.trim();
-                    final limit = int.tryParse(raw);
-                    if (limit == null || limit <= 0) {
+                    final limit = parseVnd(raw);
+                    if (limit <= 0) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Mức chi phải là số lớn hơn 0'),
@@ -191,8 +192,8 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                     ),
                     const SizedBox(width: 4),
                     FilledButton.icon(
-                      onPressed: () =>
-                          _showUpsertDialog(expenseCategories: expenseCategories),
+                      onPressed: () => _showUpsertDialog(
+                          expenseCategories: expenseCategories),
                       icon: const Icon(Icons.add),
                       label: const Text('Thêm'),
                     ),
@@ -240,8 +241,6 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                       );
                     }
 
-                    final money = NumberFormat.decimalPattern('vi_VN');
-
                     return ListView.separated(
                       padding: const EdgeInsets.all(12),
                       itemCount: items.length,
@@ -259,14 +258,12 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                                 b.category == null
                                     ? Icons.pie_chart_outline
                                     : Icons.sell_outlined,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .primary,
+                                color: Theme.of(context).colorScheme.primary,
                               ),
                             ),
                             title: Text(title),
                             subtitle: Text(
-                              'Giới hạn: ${money.format(b.budget.limitAmount)}₫',
+                              'Giới hạn: ${formatVnd(b.budget.limitAmount)}₫',
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,

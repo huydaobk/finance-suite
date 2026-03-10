@@ -1,8 +1,8 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/db/app_database.dart';
+import '../../../../core/utils/vnd_format.dart';
 import 'wallet_transfer_screen.dart';
 
 /// Dùng cho cả thêm mới lẫn chỉnh sửa giao dịch.
@@ -38,7 +38,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       _occurredAt = tx.occurredAt;
       _walletId = tx.walletId;
       _categoryId = tx.categoryId;
-      _amountCtrl.text = tx.amount.toString();
+      _amountCtrl.text = formatVnd(tx.amount);
       _noteCtrl.text = tx.note ?? '';
     } else {
       _bootstrapDefaults();
@@ -104,7 +104,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final amount = int.tryParse(_amountCtrl.text.trim()) ?? 0;
+    final amount = parseVnd(_amountCtrl.text);
     if (amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Số tiền phải > 0')),
@@ -122,7 +122,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     setState(() => _saving = true);
     try {
       final db = AppDatabase.instance;
-      final noteVal = _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim();
+      final noteVal =
+          _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim();
 
       if (_isEdit) {
         // ── Update ──────────────────────────────────────────────────────────
@@ -147,9 +148,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                   type: _type,
                   amount: amount,
                   occurredAt: _occurredAt,
-                  note: noteVal == null
-                      ? const Value.absent()
-                      : Value(noteVal),
+                  note: noteVal == null ? const Value.absent() : Value(noteVal),
                 ),
               );
 
@@ -160,8 +159,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                     id: alertId,
                     type: 'large_expense',
                     titleVi: 'Cảnh báo chi tiêu lớn',
-                    bodyVi:
-                        'Bạn vừa ghi nhận khoản chi ${NumberFormat.decimalPattern('vi_VN').format(amount)}₫.',
+                    bodyVi: 'Bạn vừa ghi nhận khoản chi ${formatVnd(amount)}₫.',
                     metaJson: Value(
                       '{"txId":"$id","amount":$amount,"walletId":"$_walletId","categoryId":"$_categoryId"}',
                     ),
@@ -223,8 +221,11 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                   border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.number,
+                inputFormatters: const [VndTextInputFormatter()],
                 validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Nhập số tiền' : null,
+                    (v == null || v.trim().isEmpty || parseVnd(v) <= 0)
+                        ? 'Nhập số tiền hợp lệ'
+                        : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -284,7 +285,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                                   final navigator = Navigator.of(context);
                                   final created = await navigator.push<bool>(
                                     MaterialPageRoute(
-                                      builder: (_) => const WalletTransferScreen(),
+                                      builder: (_) =>
+                                          const WalletTransferScreen(),
                                     ),
                                   );
                                   if (created == true && context.mounted) {
@@ -324,9 +326,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: _saving ? null : _save,
-                child: Text(_saving
-                    ? 'Đang lưu...'
-                    : (_isEdit ? 'Cập nhật' : 'Lưu')),
+                child: Text(
+                    _saving ? 'Đang lưu...' : (_isEdit ? 'Cập nhật' : 'Lưu')),
               ),
             ],
           ),

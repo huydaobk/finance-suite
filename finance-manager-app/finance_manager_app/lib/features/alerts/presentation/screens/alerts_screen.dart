@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/db/app_database.dart';
+import '../../../../core/utils/vnd_format.dart';
 
 class AlertsScreen extends StatefulWidget {
   const AlertsScreen({super.key});
@@ -134,7 +135,8 @@ class _AlertsScreenState extends State<AlertsScreen> {
                               Expanded(
                                 child: Text(
                                   a.titleVi,
-                                  style: Theme.of(context).textTheme.titleMedium,
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium,
                                 ),
                               ),
                               _StatusChip(status: a.status),
@@ -145,7 +147,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                           if (amount != null) ...[
                             const SizedBox(height: 6),
                             Text(
-                              'Số tiền: ${NumberFormat.decimalPattern('vi_VN').format(amount)}₫',
+                              'Số tiền: ${formatVnd(amount)}₫',
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ],

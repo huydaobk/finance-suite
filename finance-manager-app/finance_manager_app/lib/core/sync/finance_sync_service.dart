@@ -36,8 +36,9 @@ class FinanceSyncService {
 
     Future<List<InboxTx>> runWithToken(String token) async {
       final uri = _syncUri.replace(
-        queryParameters:
-            lastSync != null && lastSync.isNotEmpty ? {'since': lastSync} : null,
+        queryParameters: lastSync != null && lastSync.isNotEmpty
+            ? {'since': lastSync}
+            : null,
       );
       final resp = await http.get(
         uri,

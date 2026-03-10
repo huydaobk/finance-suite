@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/db/app_database.dart';
+import '../../../../core/utils/vnd_format.dart';
 import 'add_transaction_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -12,11 +13,6 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
-  final _money = NumberFormat.currency(
-    locale: 'vi_VN',
-    symbol: '₫',
-    decimalDigits: 0,
-  );
   final _dateFmt = DateFormat('dd/MM/yyyy');
 
   DateTimeRange? _customRange;
@@ -29,7 +25,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (_customRange != null) return _customRange!;
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, 1);
-    final end = DateTime(now.year, now.month + 1, 1).subtract(const Duration(seconds: 1));
+    final end = DateTime(now.year, now.month + 1, 1)
+        .subtract(const Duration(seconds: 1));
     return DateTimeRange(start: start, end: end);
   }
 
@@ -63,7 +60,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     if (_filterType != 'all' && tx.type != _filterType) return false;
     if (_filterWalletId != null && tx.walletId != _filterWalletId) return false;
-    if (_filterCategoryId != null && tx.categoryId != _filterCategoryId) return false;
+    if (_filterCategoryId != null && tx.categoryId != _filterCategoryId) {
+      return false;
+    }
 
     if (lowerSearch.isNotEmpty) {
       final haystack = [
@@ -93,7 +92,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     final range = _effectiveRange;
     final from = DateTime(range.start.year, range.start.month, range.start.day);
-    final toExclusive = DateTime(range.end.year, range.end.month, range.end.day + 1);
+    final toExclusive =
+        DateTime(range.end.year, range.end.month, range.end.day + 1);
     final db = AppDatabase.instance;
 
     return Scaffold(
@@ -144,7 +144,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ButtonSegment(value: 'all', label: Text('Tất cả')),
                           ButtonSegment(value: 'expense', label: Text('Chi')),
                           ButtonSegment(value: 'income', label: Text('Thu')),
-                          ButtonSegment(value: 'transfer', label: Text('Chuyển')),
+                          ButtonSegment(
+                              value: 'transfer', label: Text('Chuyển')),
                         ],
                         selected: {_filterType},
                         onSelectionChanged: (values) {
@@ -177,7 +178,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ),
                         ),
                       ],
-                      onChanged: (value) => setState(() => _filterWalletId = value),
+                      onChanged: (value) =>
+                          setState(() => _filterWalletId = value),
                     );
                   },
                 ),
@@ -204,7 +206,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ),
                         ),
                       ],
-                      onChanged: (value) => setState(() => _filterCategoryId = value),
+                      onChanged: (value) =>
+                          setState(() => _filterCategoryId = value),
                     );
                   },
                 ),
@@ -217,7 +220,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
               stream: db.watchTransactionItems(from: from, to: toExclusive),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
-                  return Center(child: Text('Lỗi tải lịch sử: ${snapshot.error}'));
+                  return Center(
+                      child: Text('Lỗi tải lịch sử: ${snapshot.error}'));
                 }
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
@@ -231,9 +235,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.history_toggle_off, size: 56, color: Colors.grey.shade500),
+                          Icon(Icons.history_toggle_off,
+                              size: 56, color: Colors.grey.shade500),
                           const SizedBox(height: 12),
-                          Text('Không có giao dịch phù hợp', style: Theme.of(context).textTheme.titleMedium),
+                          Text('Không có giao dịch phù hợp',
+                              style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 6),
                           const Text(
                             'Thử đổi khoảng thời gian hoặc bộ lọc để xem thêm dữ liệu.',
@@ -258,9 +264,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   itemBuilder: (context, index) {
                     final section = sections[index];
                     final items = section.value;
-                    final income = items.where((e) => e.tx.type == 'income').fold<int>(0, (sum, e) => sum + e.tx.amount);
-                    final expense = items.where((e) => e.tx.type == 'expense').fold<int>(0, (sum, e) => sum + e.tx.amount);
-                    final transfer = items.where((e) => e.tx.type == 'transfer').fold<int>(0, (sum, e) => sum + e.tx.amount);
+                    final income = items
+                        .where((e) => e.tx.type == 'income')
+                        .fold<int>(0, (sum, e) => sum + e.tx.amount);
+                    final expense = items
+                        .where((e) => e.tx.type == 'expense')
+                        .fold<int>(0, (sum, e) => sum + e.tx.amount);
+                    final transfer = items
+                        .where((e) => e.tx.type == 'transfer')
+                        .fold<int>(0, (sum, e) => sum + e.tx.amount);
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,23 +284,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               Expanded(
                                 child: Text(
                                   section.key,
-                                  style: Theme.of(context).textTheme.titleMedium,
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium,
                                 ),
                               ),
                               Text(
-                                'Thu ${_money.format(income)} · Chi ${_money.format(expense)}${transfer > 0 ? ' · Chuyển ${_money.format(transfer)}' : ''}',
+                                'Thu ${formatVnd(income)}₫ · Chi ${formatVnd(expense)}₫${transfer > 0 ? ' · Chuyển ${formatVnd(transfer)}₫' : ''}',
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
                             ],
                           ),
                         ),
-                        ...items.map((item) => _HistoryTile(item: item, money: _money, onTap: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => AddTransactionScreen(existing: item)),
-                          );
-                          if (mounted) setState(() {});
-                        })),
-                        if (index != sections.length - 1) const SizedBox(height: 16),
+                        ...items.map((item) => _HistoryTile(
+                            item: item,
+                            onTap: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        AddTransactionScreen(existing: item)),
+                              );
+                              if (mounted) setState(() {});
+                            })),
+                        if (index != sections.length - 1)
+                          const SizedBox(height: 16),
                       ],
                     );
                   },
@@ -305,12 +323,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
 class _HistoryTile extends StatelessWidget {
   const _HistoryTile({
     required this.item,
-    required this.money,
     required this.onTap,
   });
 
   final TransactionItem item;
-  final NumberFormat money;
   final VoidCallback onTap;
 
   @override
@@ -318,9 +334,8 @@ class _HistoryTile extends StatelessWidget {
     final tx = item.tx;
     final isExpense = tx.type == 'expense';
     final isTransfer = tx.type == 'transfer';
-    final color = isTransfer
-        ? Colors.blue
-        : (isExpense ? Colors.red : Colors.green);
+    final color =
+        isTransfer ? Colors.blue : (isExpense ? Colors.red : Colors.green);
     final sign = isTransfer ? '' : (isExpense ? '-' : '+');
 
     return Card(
@@ -337,7 +352,7 @@ class _HistoryTile extends StatelessWidget {
           ),
         ),
         title: Text(
-          '$sign${money.format(tx.amount)}',
+          '$sign${formatVnd(tx.amount)}₫',
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 color: color,
                 fontWeight: FontWeight.w700,

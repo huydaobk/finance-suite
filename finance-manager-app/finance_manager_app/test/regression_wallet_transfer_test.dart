@@ -18,7 +18,8 @@ void main() {
       await db.close();
     });
 
-    test('watchMonthSummary and watchMonthlyTrend exclude transfer transactions',
+    test(
+        'watchMonthSummary and watchMonthlyTrend exclude transfer transactions',
         () async {
       final marchStart = DateTime(2026, 3, 1);
       final aprilStart = DateTime(2026, 4, 1);
@@ -66,9 +67,8 @@ void main() {
             ),
           );
 
-      final summary = await db
-          .watchMonthSummary(from: marchStart, to: aprilStart)
-          .first;
+      final summary =
+          await db.watchMonthSummary(from: marchStart, to: aprilStart).first;
       final trend = await db
           .watchMonthlyTrend(anchorMonth: DateTime(2026, 4), monthsBack: 2)
           .first;
@@ -86,7 +86,65 @@ void main() {
       expect(trend[1].expense, 700000);
     });
 
-    test('deleteTransaction deletes full transfer pair and falls back safely when pair is incomplete',
+    test(
+        'wallet current balance includes opening balance and handles transfer delta correctly',
+        () async {
+      await db.into(db.wallets).insertOnConflictUpdate(
+            const WalletsCompanion(
+              id: drift.Value('wallet_cash'),
+              name: drift.Value('Ví tiền mặt'),
+              currency: drift.Value('VND'),
+              openingBalance: drift.Value(1000000),
+            ),
+          );
+      await db.into(db.wallets).insertOnConflictUpdate(
+            const WalletsCompanion(
+              id: drift.Value('wallet_bank'),
+              name: drift.Value('Tài khoản ngân hàng'),
+              currency: drift.Value('VND'),
+              openingBalance: drift.Value(500000),
+            ),
+          );
+
+      await db.into(db.transactions).insert(
+            TransactionsCompanion.insert(
+              id: 'income_wallet_cash',
+              walletId: 'wallet_cash',
+              categoryId: 'cat_salary',
+              type: 'income',
+              amount: 200000,
+              occurredAt: DateTime(2026, 3, 6),
+            ),
+          );
+      await db.into(db.transactions).insert(
+            TransactionsCompanion.insert(
+              id: 'expense_wallet_cash',
+              walletId: 'wallet_cash',
+              categoryId: 'cat_food',
+              type: 'expense',
+              amount: 50000,
+              occurredAt: DateTime(2026, 3, 6),
+            ),
+          );
+      await db.createWalletTransfer(
+        pairId: 'balance_pair',
+        fromWalletId: 'wallet_cash',
+        toWalletId: 'wallet_bank',
+        amount: 300000,
+        occurredAt: DateTime(2026, 3, 6),
+        categoryId: 'cat_transfer_internal',
+      );
+
+      final balances = await db.watchWalletBalances().first;
+      final cash = balances.firstWhere((e) => e.wallet.id == 'wallet_cash');
+      final bank = balances.firstWhere((e) => e.wallet.id == 'wallet_bank');
+
+      expect(cash.currentBalance, 850000);
+      expect(bank.currentBalance, 800000);
+    });
+
+    test(
+        'deleteTransaction deletes full transfer pair and falls back safely when pair is incomplete',
         () async {
       await db.createWalletTransfer(
         pairId: 'pair_complete',
@@ -148,12 +206,14 @@ Future<void> _seedBaseData(AppDatabase db) async {
         WalletsCompanion.insert(
           id: 'wallet_cash',
           name: 'Ví tiền mặt',
+          openingBalance: const drift.Value(0),
         ),
       );
   await db.into(db.wallets).insert(
         WalletsCompanion.insert(
           id: 'wallet_bank',
           name: 'Tài khoản ngân hàng',
+          openingBalance: const drift.Value(0),
         ),
       );
   await db.into(db.categories).insert(

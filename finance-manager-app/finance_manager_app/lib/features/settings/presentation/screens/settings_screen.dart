@@ -4,9 +4,13 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../budgets/presentation/screens/budgets_screen.dart';
 import '../../../bills/presentation/screens/bills_screen.dart';
 import '../../../../core/db/app_database.dart';
+import '../../../../core/utils/vnd_format.dart';
+import 'wallet_edit_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  static String _formatMoney(int amount) => '${formatVnd(amount)}₫';
 
   Future<void> _confirmDeleteTransactions(BuildContext context) async {
     final ok = await showDialog<bool>(
@@ -63,8 +67,8 @@ class SettingsScreen extends StatelessWidget {
         ),
         const Divider(height: 1),
         const _SectionHeader('Ví của tôi'),
-        FutureBuilder<List<Wallet>>(
-          future: AppDatabase.instance.getWallets(),
+        StreamBuilder<List<WalletBalanceSnapshot>>(
+          stream: AppDatabase.instance.watchWalletBalances(),
           builder: (context, snapshot) {
             final wallets = snapshot.data ?? [];
             if (wallets.isEmpty) {
@@ -75,11 +79,29 @@ class SettingsScreen extends StatelessWidget {
             }
             return Column(
               children: wallets
-                  .map((w) => ListTile(
-                        leading: const Icon(
-                            Icons.account_balance_wallet_outlined),
-                        title: Text(w.name),
-                        subtitle: Text(w.currency),
+                  .map((item) => ListTile(
+                        leading:
+                            const Icon(Icons.account_balance_wallet_outlined),
+                        title: Text(item.wallet.name),
+                        subtitle: Text(
+                          'Số dư đầu kỳ: ${_formatMoney(item.wallet.openingBalance)} · Số dư hiện tại: ${_formatMoney(item.currentBalance)}',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () async {
+                          final updated =
+                              await Navigator.of(context).push<bool>(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  WalletEditScreen(walletId: item.wallet.id),
+                            ),
+                          );
+
+                          if (updated == true && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Đã cập nhật ví ✅')),
+                            );
+                          }
+                        },
                       ))
                   .toList(),
             );

@@ -1,9 +1,9 @@
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/db/app_database.dart';
+import '../../../../core/utils/vnd_format.dart';
 
 class BillsScreen extends StatefulWidget {
   const BillsScreen({super.key});
@@ -14,11 +14,6 @@ class BillsScreen extends StatefulWidget {
 
 class _BillsScreenState extends State<BillsScreen> {
   final _db = AppDatabase.instance;
-  final _moneyFmt = NumberFormat.currency(
-    locale: 'vi_VN',
-    symbol: '₫',
-    decimalDigits: 0,
-  );
 
   Future<void> _confirmDelete(BillWithDetails item) async {
     final ok = await showDialog<bool>(
@@ -133,7 +128,7 @@ class _BillsScreenState extends State<BillsScreen> {
                       ),
                       if (bill.amountExpected != null)
                         Text(
-                          _moneyFmt.format(bill.amountExpected),
+                          '${formatVnd(bill.amountExpected!)}₫',
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 13,
@@ -215,7 +210,7 @@ class _AddBillSheetState extends State<_AddBillSheet> {
     setState(() => _saving = true);
 
     final amountRaw = _amountCtrl.text.trim();
-    final amount = amountRaw.isEmpty ? null : int.tryParse(amountRaw);
+    final amount = amountRaw.isEmpty ? null : parseVnd(amountRaw);
 
     await widget.onSave(BillsCompanion.insert(
       id: const Uuid().v4(),
@@ -246,8 +241,7 @@ class _AddBillSheetState extends State<_AddBillSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Thêm hóa đơn',
-                style: Theme.of(context).textTheme.titleLarge),
+            Text('Thêm hóa đơn', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 16),
             TextFormField(
               controller: _nameCtrl,
@@ -267,8 +261,8 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                 border: OutlineInputBorder(),
               ),
               items: widget.categories
-                  .map((c) =>
-                      DropdownMenuItem(value: c.id, child: Text(c.name)))
+                  .map(
+                      (c) => DropdownMenuItem(value: c.id, child: Text(c.name)))
                   .toList(),
               onChanged: (v) => setState(() => _categoryId = v),
             ),
@@ -281,8 +275,8 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                 border: OutlineInputBorder(),
               ),
               items: widget.wallets
-                  .map((w) =>
-                      DropdownMenuItem(value: w.id, child: Text(w.name)))
+                  .map(
+                      (w) => DropdownMenuItem(value: w.id, child: Text(w.name)))
                   .toList(),
               onChanged: (v) => setState(() => _walletId = v),
             ),
@@ -324,10 +318,11 @@ class _AddBillSheetState extends State<_AddBillSheet> {
             TextFormField(
               controller: _amountCtrl,
               keyboardType: TextInputType.number,
+              inputFormatters: const [VndTextInputFormatter()],
               decoration: const InputDecoration(
                 labelText: 'Số tiền dự kiến (không bắt buộc)',
                 border: OutlineInputBorder(),
-                hintText: 'VD: 200000',
+                hintText: 'VD: 200.000',
               ),
             ),
             const SizedBox(height: 8),

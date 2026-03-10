@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/db/app_database.dart';
+import '../../../../core/utils/vnd_format.dart';
 
 class WalletTransferScreen extends StatefulWidget {
   const WalletTransferScreen({super.key});
@@ -78,7 +79,7 @@ class _WalletTransferScreenState extends State<WalletTransferScreen> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final amount = int.tryParse(_amountCtrl.text.trim()) ?? 0;
+    final amount = parseVnd(_amountCtrl.text);
     if (amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Số tiền phải lớn hơn 0')),
@@ -86,9 +87,12 @@ class _WalletTransferScreenState extends State<WalletTransferScreen> {
       return;
     }
 
-    if (_fromWalletId == null || _toWalletId == null || _transferCategoryId == null) {
+    if (_fromWalletId == null ||
+        _toWalletId == null ||
+        _transferCategoryId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chọn đủ ví nguồn, ví đích và danh mục chuyển tiền')),
+        const SnackBar(
+            content: Text('Chọn đủ ví nguồn, ví đích và danh mục chuyển tiền')),
       );
       return;
     }
@@ -155,7 +159,8 @@ class _WalletTransferScreenState extends State<WalletTransferScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Luồng xử lý', style: Theme.of(context).textTheme.titleSmall),
+                          Text('Luồng xử lý',
+                              style: Theme.of(context).textTheme.titleSmall),
                           const SizedBox(height: 8),
                           const Text(
                             'App sẽ tạo 2 bản ghi liên kết: 1 giao dịch chuyển ra ở ví nguồn và 1 giao dịch chuyển vào ở ví đích.',
@@ -180,7 +185,8 @@ class _WalletTransferScreenState extends State<WalletTransferScreen> {
                         )
                         .toList(),
                     onChanged: (value) => setState(() => _fromWalletId = value),
-                    validator: (value) => value == null ? 'Chọn ví nguồn' : null,
+                    validator: (value) =>
+                        value == null ? 'Chọn ví nguồn' : null,
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
@@ -204,14 +210,17 @@ class _WalletTransferScreenState extends State<WalletTransferScreen> {
                   TextFormField(
                     controller: _amountCtrl,
                     keyboardType: TextInputType.number,
+                    inputFormatters: const [VndTextInputFormatter()],
                     decoration: const InputDecoration(
                       labelText: 'Số tiền (VND)',
                       border: OutlineInputBorder(),
                     ),
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty) return 'Nhập số tiền';
-                      final amount = int.tryParse(value.trim());
-                      if (amount == null || amount <= 0) return 'Số tiền không hợp lệ';
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Nhập số tiền';
+                      }
+                      final amount = parseVnd(value);
+                      if (amount <= 0) return 'Số tiền không hợp lệ';
                       return null;
                     },
                   ),

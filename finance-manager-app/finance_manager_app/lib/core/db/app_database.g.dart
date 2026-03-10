@@ -26,6 +26,14 @@ class $WalletsTable extends Wallets with TableInfo<$WalletsTable, Wallet> {
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       defaultValue: const Constant('VND'));
+  static const VerificationMeta _openingBalanceMeta =
+      const VerificationMeta('openingBalance');
+  @override
+  late final GeneratedColumn<int> openingBalance = GeneratedColumn<int>(
+      'opening_balance', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -35,7 +43,8 @@ class $WalletsTable extends Wallets with TableInfo<$WalletsTable, Wallet> {
       requiredDuringInsert: false,
       defaultValue: currentDateAndTime);
   @override
-  List<GeneratedColumn> get $columns => [id, name, currency, createdAt];
+  List<GeneratedColumn> get $columns =>
+      [id, name, currency, openingBalance, createdAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -61,6 +70,12 @@ class $WalletsTable extends Wallets with TableInfo<$WalletsTable, Wallet> {
       context.handle(_currencyMeta,
           currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta));
     }
+    if (data.containsKey('opening_balance')) {
+      context.handle(
+          _openingBalanceMeta,
+          openingBalance.isAcceptableOrUnknown(
+              data['opening_balance']!, _openingBalanceMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -80,6 +95,8 @@ class $WalletsTable extends Wallets with TableInfo<$WalletsTable, Wallet> {
           .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
       currency: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}currency'])!,
+      openingBalance: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}opening_balance'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
     );
@@ -95,11 +112,13 @@ class Wallet extends DataClass implements Insertable<Wallet> {
   final String id;
   final String name;
   final String currency;
+  final int openingBalance;
   final DateTime createdAt;
   const Wallet(
       {required this.id,
       required this.name,
       required this.currency,
+      required this.openingBalance,
       required this.createdAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -107,6 +126,7 @@ class Wallet extends DataClass implements Insertable<Wallet> {
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
     map['currency'] = Variable<String>(currency);
+    map['opening_balance'] = Variable<int>(openingBalance);
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -116,6 +136,7 @@ class Wallet extends DataClass implements Insertable<Wallet> {
       id: Value(id),
       name: Value(name),
       currency: Value(currency),
+      openingBalance: Value(openingBalance),
       createdAt: Value(createdAt),
     );
   }
@@ -127,6 +148,7 @@ class Wallet extends DataClass implements Insertable<Wallet> {
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       currency: serializer.fromJson<String>(json['currency']),
+      openingBalance: serializer.fromJson<int>(json['openingBalance']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -137,16 +159,22 @@ class Wallet extends DataClass implements Insertable<Wallet> {
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
       'currency': serializer.toJson<String>(currency),
+      'openingBalance': serializer.toJson<int>(openingBalance),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
 
   Wallet copyWith(
-          {String? id, String? name, String? currency, DateTime? createdAt}) =>
+          {String? id,
+          String? name,
+          String? currency,
+          int? openingBalance,
+          DateTime? createdAt}) =>
       Wallet(
         id: id ?? this.id,
         name: name ?? this.name,
         currency: currency ?? this.currency,
+        openingBalance: openingBalance ?? this.openingBalance,
         createdAt: createdAt ?? this.createdAt,
       );
   Wallet copyWithCompanion(WalletsCompanion data) {
@@ -154,6 +182,9 @@ class Wallet extends DataClass implements Insertable<Wallet> {
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       currency: data.currency.present ? data.currency.value : this.currency,
+      openingBalance: data.openingBalance.present
+          ? data.openingBalance.value
+          : this.openingBalance,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -164,13 +195,15 @@ class Wallet extends DataClass implements Insertable<Wallet> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('currency: $currency, ')
+          ..write('openingBalance: $openingBalance, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, currency, createdAt);
+  int get hashCode =>
+      Object.hash(id, name, currency, openingBalance, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -178,6 +211,7 @@ class Wallet extends DataClass implements Insertable<Wallet> {
           other.id == this.id &&
           other.name == this.name &&
           other.currency == this.currency &&
+          other.openingBalance == this.openingBalance &&
           other.createdAt == this.createdAt);
 }
 
@@ -185,12 +219,14 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
   final Value<String> id;
   final Value<String> name;
   final Value<String> currency;
+  final Value<int> openingBalance;
   final Value<DateTime> createdAt;
   final Value<int> rowid;
   const WalletsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.currency = const Value.absent(),
+    this.openingBalance = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -198,6 +234,7 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
     required String id,
     required String name,
     this.currency = const Value.absent(),
+    this.openingBalance = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -206,6 +243,7 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
     Expression<String>? id,
     Expression<String>? name,
     Expression<String>? currency,
+    Expression<int>? openingBalance,
     Expression<DateTime>? createdAt,
     Expression<int>? rowid,
   }) {
@@ -213,6 +251,7 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (currency != null) 'currency': currency,
+      if (openingBalance != null) 'opening_balance': openingBalance,
       if (createdAt != null) 'created_at': createdAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -222,12 +261,14 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
       {Value<String>? id,
       Value<String>? name,
       Value<String>? currency,
+      Value<int>? openingBalance,
       Value<DateTime>? createdAt,
       Value<int>? rowid}) {
     return WalletsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       currency: currency ?? this.currency,
+      openingBalance: openingBalance ?? this.openingBalance,
       createdAt: createdAt ?? this.createdAt,
       rowid: rowid ?? this.rowid,
     );
@@ -245,6 +286,9 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
     if (currency.present) {
       map['currency'] = Variable<String>(currency.value);
     }
+    if (openingBalance.present) {
+      map['opening_balance'] = Variable<int>(openingBalance.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -260,6 +304,7 @@ class WalletsCompanion extends UpdateCompanion<Wallet> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('currency: $currency, ')
+          ..write('openingBalance: $openingBalance, ')
           ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -2357,6 +2402,7 @@ typedef $$WalletsTableCreateCompanionBuilder = WalletsCompanion Function({
   required String id,
   required String name,
   Value<String> currency,
+  Value<int> openingBalance,
   Value<DateTime> createdAt,
   Value<int> rowid,
 });
@@ -2364,6 +2410,7 @@ typedef $$WalletsTableUpdateCompanionBuilder = WalletsCompanion Function({
   Value<String> id,
   Value<String> name,
   Value<String> currency,
+  Value<int> openingBalance,
   Value<DateTime> createdAt,
   Value<int> rowid,
 });
@@ -2419,6 +2466,10 @@ class $$WalletsTableFilterComposer
 
   ColumnFilters<String> get currency => $composableBuilder(
       column: $table.currency, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get openingBalance => $composableBuilder(
+      column: $table.openingBalance,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -2484,6 +2535,10 @@ class $$WalletsTableOrderingComposer
   ColumnOrderings<String> get currency => $composableBuilder(
       column: $table.currency, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get openingBalance => $composableBuilder(
+      column: $table.openingBalance,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 }
@@ -2505,6 +2560,9 @@ class $$WalletsTableAnnotationComposer
 
   GeneratedColumn<String> get currency =>
       $composableBuilder(column: $table.currency, builder: (column) => column);
+
+  GeneratedColumn<int> get openingBalance => $composableBuilder(
+      column: $table.openingBalance, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -2578,6 +2636,7 @@ class $$WalletsTableTableManager extends RootTableManager<
             Value<String> id = const Value.absent(),
             Value<String> name = const Value.absent(),
             Value<String> currency = const Value.absent(),
+            Value<int> openingBalance = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -2585,6 +2644,7 @@ class $$WalletsTableTableManager extends RootTableManager<
             id: id,
             name: name,
             currency: currency,
+            openingBalance: openingBalance,
             createdAt: createdAt,
             rowid: rowid,
           ),
@@ -2592,6 +2652,7 @@ class $$WalletsTableTableManager extends RootTableManager<
             required String id,
             required String name,
             Value<String> currency = const Value.absent(),
+            Value<int> openingBalance = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -2599,6 +2660,7 @@ class $$WalletsTableTableManager extends RootTableManager<
             id: id,
             name: name,
             currency: currency,
+            openingBalance: openingBalance,
             createdAt: createdAt,
             rowid: rowid,
           ),

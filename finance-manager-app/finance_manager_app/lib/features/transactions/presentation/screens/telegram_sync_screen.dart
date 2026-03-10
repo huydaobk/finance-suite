@@ -1,10 +1,10 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/db/app_database.dart';
 import '../../../../core/sync/finance_sync_service.dart';
+import '../../../../core/utils/vnd_format.dart';
 
 class TelegramSyncScreen extends StatefulWidget {
   const TelegramSyncScreen({super.key});
@@ -15,11 +15,6 @@ class TelegramSyncScreen extends StatefulWidget {
 
 class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
   final _svc = FinanceSyncService();
-  final _moneyFmt = NumberFormat.currency(
-    locale: 'vi_VN',
-    symbol: '₫',
-    decimalDigits: 0,
-  );
 
   List<InboxTx> _pending = [];
   Set<int> _selected = {};
@@ -128,16 +123,16 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
         final id = 'tx_tg_${const Uuid().v4()}';
 
         await db.into(db.transactions).insert(
-          TransactionsCompanion.insert(
-            id: id,
-            walletId: wallet.id,
-            categoryId: cat.id,
-            type: tx.type,
-            amount: tx.amountVnd,
-            occurredAt: txDate,
-            note: tx.note != null ? Value(tx.note!) : const Value.absent(),
-          ),
-        );
+              TransactionsCompanion.insert(
+                id: id,
+                walletId: wallet.id,
+                categoryId: cat.id,
+                type: tx.type,
+                amount: tx.amountVnd,
+                occurredAt: txDate,
+                note: tx.note != null ? Value(tx.note!) : const Value.absent(),
+              ),
+            );
         importedIds.add(tx.id);
       }
 
@@ -186,7 +181,8 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
                       const SizedBox(height: 12),
                       Text(_error!, textAlign: TextAlign.center),
                       const SizedBox(height: 12),
-                      FilledButton(onPressed: _fetch, child: const Text('Thử lại')),
+                      FilledButton(
+                          onPressed: _fetch, child: const Text('Thử lại')),
                     ],
                   ),
                 )
@@ -195,7 +191,8 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.check_circle_outline, size: 48, color: Colors.green),
+                          Icon(Icons.check_circle_outline,
+                              size: 48, color: Colors.green),
                           SizedBox(height: 12),
                           Text('Không có giao dịch mới từ Telegram'),
                         ],
@@ -213,8 +210,8 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
                               ),
                               const Spacer(),
                               TextButton(
-                                onPressed: () => setState(() =>
-                                    _selected = _pending.map((e) => e.id).toSet()),
+                                onPressed: () => setState(() => _selected =
+                                    _pending.map((e) => e.id).toSet()),
                                 child: const Text('Chọn tất cả'),
                               ),
                               TextButton(
@@ -229,7 +226,8 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
                         Expanded(
                           child: ListView.separated(
                             itemCount: _pending.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
                             itemBuilder: (ctx, i) {
                               final tx = _pending[i];
                               final isSelected = _selected.contains(tx.id);
@@ -252,15 +250,17 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
                                     isExpense
                                         ? Icons.arrow_downward
                                         : Icons.arrow_upward,
-                                    color: isExpense ? Colors.red : Colors.green,
+                                    color:
+                                        isExpense ? Colors.red : Colors.green,
                                     size: 18,
                                   ),
                                 ),
                                 title: Text(
-                                  '$sign${_moneyFmt.format(tx.amountVnd)}',
+                                  '$sign${formatVnd(tx.amountVnd)}₫',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    color: isExpense ? Colors.red : Colors.green,
+                                    color:
+                                        isExpense ? Colors.red : Colors.green,
                                   ),
                                 ),
                                 subtitle: Text(
@@ -282,8 +282,9 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: FilledButton.icon(
-                  onPressed:
-                      (_importing || _selected.isEmpty) ? null : _importSelected,
+                  onPressed: (_importing || _selected.isEmpty)
+                      ? null
+                      : _importSelected,
                   icon: _importing
                       ? const SizedBox(
                           width: 18,

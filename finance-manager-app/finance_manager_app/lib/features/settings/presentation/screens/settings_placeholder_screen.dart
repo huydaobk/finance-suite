@@ -18,7 +18,8 @@ class SettingsPlaceholderScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.payments_outlined),
             title: const Text('Budgets (Ngân sách)'),
-            subtitle: const Text('Thiết lập mức chi theo tháng / theo danh mục'),
+            subtitle:
+                const Text('Thiết lập mức chi theo tháng / theo danh mục'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               Navigator.of(context).push(

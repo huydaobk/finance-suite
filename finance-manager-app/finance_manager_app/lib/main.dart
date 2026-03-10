@@ -4,11 +4,11 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart';
 
 import 'core/db/app_database.dart';
+import 'core/utils/vnd_format.dart';
 import 'core/seed/default_seed.dart';
 import 'features/alerts/presentation/screens/alerts_screen.dart';
 import 'features/transactions/presentation/screens/transactions_screen.dart';
 import 'features/settings/presentation/screens/settings_screen.dart';
-
 
 void main() {
   runApp(const FinanceManagerApp());
@@ -154,7 +154,8 @@ class _OverviewScreenState extends State<OverviewScreen> {
     );
   }
 
-  DateTime get _monthStart => DateTime(_selectedMonth.year, _selectedMonth.month);
+  DateTime get _monthStart =>
+      DateTime(_selectedMonth.year, _selectedMonth.month);
 
   DateTime get _nextMonthStart =>
       DateTime(_selectedMonth.year, _selectedMonth.month + 1);
@@ -260,21 +261,21 @@ class _SummaryCards extends StatelessWidget {
       children: [
         _SummaryCardTile(
           title: 'Tổng thu',
-          value: moneyFormat.format(summary.income),
+          value: '${formatVnd(summary.income)}₫',
           color: Colors.green,
           icon: Icons.trending_up,
         ),
         const SizedBox(height: 8),
         _SummaryCardTile(
           title: 'Tổng chi',
-          value: moneyFormat.format(summary.expense),
+          value: '${formatVnd(summary.expense)}₫',
           color: Colors.red,
           icon: Icons.trending_down,
         ),
         const SizedBox(height: 8),
         _SummaryCardTile(
           title: 'Ròng',
-          value: moneyFormat.format(summary.net),
+          value: '${formatVnd(summary.net)}₫',
           color: summary.net >= 0 ? Colors.blue : Colors.orange,
           icon: Icons.account_balance_wallet_outlined,
         ),
@@ -346,7 +347,8 @@ class _ExpenseBreakdownCard extends StatelessWidget {
                 child: Center(
                   child: Column(
                     children: [
-                      Icon(Icons.pie_chart_outline, size: 48, color: Colors.grey),
+                      Icon(Icons.pie_chart_outline,
+                          size: 48, color: Colors.grey),
                       SizedBox(height: 10),
                       Text('Không có dữ liệu chi tiêu tháng này'),
                     ],
@@ -397,7 +399,7 @@ class _ExpenseBreakdownCard extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(child: Text(item.categoryName)),
                       Text(
-                        moneyFormat.format(item.total),
+                        '${formatVnd(item.total)}₫',
                         style: const TextStyle(fontWeight: FontWeight.w500),
                       ),
                     ],
@@ -472,11 +474,13 @@ class _SixMonthTrendCard extends StatelessWidget {
                             if (index < 0 || index >= points.length) {
                               return const SizedBox.shrink();
                             }
-                            final label =
-                                monthFormat.format(points[index].month).substring(0, 5);
+                            final label = monthFormat
+                                .format(points[index].month)
+                                .substring(0, 5);
                             return Padding(
                               padding: const EdgeInsets.only(top: 6),
-                              child: Text(label, style: const TextStyle(fontSize: 10)),
+                              child: Text(label,
+                                  style: const TextStyle(fontSize: 10)),
                             );
                           },
                         ),
@@ -501,7 +505,8 @@ class _SixMonthTrendCard extends StatelessWidget {
                         barWidth: 3,
                         dotData: const FlDotData(show: true),
                         spots: List.generate(points.length, (index) {
-                          return FlSpot(index.toDouble(), points[index].expense.toDouble());
+                          return FlSpot(index.toDouble(),
+                              points[index].expense.toDouble());
                         }),
                       ),
                       LineChartBarData(
@@ -510,7 +515,8 @@ class _SixMonthTrendCard extends StatelessWidget {
                         barWidth: 3,
                         dotData: const FlDotData(show: true),
                         spots: List.generate(points.length, (index) {
-                          return FlSpot(index.toDouble(), points[index].income.toDouble());
+                          return FlSpot(index.toDouble(),
+                              points[index].income.toDouble());
                         }),
                       ),
                     ],
@@ -528,8 +534,8 @@ class _SixMonthTrendCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Tháng mới nhất: Thu ${moneyFormat.format(points.last.income)} | '
-                'Chi ${moneyFormat.format(points.last.expense)}',
+                'Tháng mới nhất: Thu ${formatVnd(points.last.income)}₫ | '
+                'Chi ${formatVnd(points.last.expense)}₫',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -564,7 +570,8 @@ class _LegendItem extends StatelessWidget {
         Container(
           width: 12,
           height: 12,
-          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+          decoration: BoxDecoration(
+              color: color, borderRadius: BorderRadius.circular(2)),
         ),
         const SizedBox(width: 6),
         Text(label),

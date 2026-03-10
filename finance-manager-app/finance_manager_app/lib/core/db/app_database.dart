@@ -3,6 +3,7 @@ import 'package:rxdart/rxdart.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
 import '../transactions/transfer_metadata.dart';
+import '../utils/vnd_format.dart';
 import 'tables.dart';
 
 part 'app_database.g.dart';
@@ -29,7 +30,17 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.addColumn(wallets, wallets.openingBalance);
+          }
+        },
+      );
 
   static QueryExecutor _openConnection() {
     return driftDatabase(name: 'finance_manager_db');
@@ -41,7 +52,8 @@ class AppDatabase extends _$AppDatabase {
   }) {
     final q = select(transactions).join([
       leftOuterJoin(wallets, wallets.id.equalsExp(transactions.walletId)),
-      leftOuterJoin(categories, categories.id.equalsExp(transactions.categoryId)),
+      leftOuterJoin(
+          categories, categories.id.equalsExp(transactions.categoryId)),
     ])
       ..orderBy([
         OrderingTerm.desc(transactions.occurredAt),
@@ -84,7 +96,8 @@ class AppDatabase extends _$AppDatabase {
     required DateTime to,
   }) {
     final q = select(transactions).join([
-      leftOuterJoin(categories, categories.id.equalsExp(transactions.categoryId)),
+      leftOuterJoin(
+          categories, categories.id.equalsExp(transactions.categoryId)),
     ])
       ..where(transactions.occurredAt.isBiggerOrEqualValue(from))
       ..where(transactions.occurredAt.isSmallerThanValue(to))
@@ -107,7 +120,8 @@ class AppDatabase extends _$AppDatabase {
       }
 
       final list = totals.entries.map((entry) {
-        final percent = totalExpense > 0 ? (entry.value * 100 / totalExpense) : 0.0;
+        final percent =
+            totalExpense > 0 ? (entry.value * 100 / totalExpense) : 0.0;
         return CategoryExpenseTotal(
           categoryId: entry.key,
           categoryName: names[entry.key] ?? 'Khác',
@@ -126,8 +140,10 @@ class AppDatabase extends _$AppDatabase {
     int monthsBack = 6,
   }) {
     final normalizedAnchor = DateTime(anchorMonth.year, anchorMonth.month);
-    final startMonth = DateTime(normalizedAnchor.year, normalizedAnchor.month - (monthsBack - 1));
-    final endExclusive = DateTime(normalizedAnchor.year, normalizedAnchor.month + 1);
+    final startMonth = DateTime(
+        normalizedAnchor.year, normalizedAnchor.month - (monthsBack - 1));
+    final endExclusive =
+        DateTime(normalizedAnchor.year, normalizedAnchor.month + 1);
 
     final q = selectOnly(transactions)
       ..addColumns([
@@ -149,8 +165,10 @@ class AppDatabase extends _$AppDatabase {
 
         if (occurredAt == null || type == null) continue;
 
-        final monthKey = '${occurredAt.year.toString().padLeft(4, '0')}-${occurredAt.month.toString().padLeft(2, '0')}';
-        final bucket = grouped.putIfAbsent(monthKey, () => const _IncomeExpense());
+        final monthKey =
+            '${occurredAt.year.toString().padLeft(4, '0')}-${occurredAt.month.toString().padLeft(2, '0')}';
+        final bucket =
+            grouped.putIfAbsent(monthKey, () => const _IncomeExpense());
 
         if (type == 'income') {
           grouped[monthKey] = bucket.copyWith(income: bucket.income + amount);
@@ -239,7 +257,8 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> deleteAllDismissedAlerts() {
-    return (delete(alertEvents)..where((t) => t.status.equals('dismissed'))).go();
+    return (delete(alertEvents)..where((t) => t.status.equals('dismissed')))
+        .go();
   }
 
   Stream<List<BudgetWithCategory>> watchBudgetsForMonth(String month) {
@@ -321,8 +340,7 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> maybeCreateBillDueAlerts() async {
     final today = DateTime.now();
-    final monthKey =
-        '${today.year}-${today.month.toString().padLeft(2, '0')}';
+    final monthKey = '${today.year}-${today.month.toString().padLeft(2, '0')}';
     final allBills = await select(bills).get();
     for (final bill in allBills) {
       if (!bill.active) continue;
@@ -337,8 +355,7 @@ class AppDatabase extends _$AppDatabase {
         id: alertId,
         type: 'bill_due',
         titleVi: 'Sắp đến hạn: ${bill.name}',
-        bodyVi:
-            'Hóa đơn "${bill.name}" đến hạn ngày ${bill.dueDay}/$monthKey.',
+        bodyVi: 'Hóa đơn "${bill.name}" đến hạn ngày ${bill.dueDay}/$monthKey.',
         metaJson: Value('{"billId":"${bill.id}","month":"$monthKey"}'),
       ));
     }
@@ -360,7 +377,8 @@ class AppDatabase extends _$AppDatabase {
       ),
     );
 
-    return (select(categories)..where((c) => c.id.equals('cat_transfer_internal')))
+    return (select(categories)
+          ..where((c) => c.id.equals('cat_transfer_internal')))
         .getSingle();
   }
 
@@ -373,8 +391,12 @@ class AppDatabase extends _$AppDatabase {
     required String categoryId,
     String? note,
   }) async {
-    final fromWallet = await (select(wallets)..where((w) => w.id.equals(fromWalletId))).getSingle();
-    final toWallet = await (select(wallets)..where((w) => w.id.equals(toWalletId))).getSingle();
+    final fromWallet = await (select(wallets)
+          ..where((w) => w.id.equals(fromWalletId)))
+        .getSingle();
+    final toWallet = await (select(wallets)
+          ..where((w) => w.id.equals(toWalletId)))
+        .getSingle();
     final cleanNote = (note ?? '').trim();
 
     await transaction(() async {
@@ -411,7 +433,9 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> deleteTransaction(String id) async {
-    final existingTx = await (select(transactions)..where((t) => t.id.equals(id))).getSingleOrNull();
+    final existingTx = await (select(transactions)
+          ..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
     final transferMeta = TransferMetadata.tryParse(
       id: id,
       note: existingTx?.note,
@@ -463,7 +487,58 @@ class AppDatabase extends _$AppDatabase {
         ),
       );
 
-  Future<List<Wallet>> getWallets() => select(wallets).get();
+  Future<List<Wallet>> getWallets() =>
+      (select(wallets)..orderBy([(w) => OrderingTerm.asc(w.createdAt)])).get();
+
+  Future<Wallet> getWalletById(String id) =>
+      (select(wallets)..where((w) => w.id.equals(id))).getSingle();
+
+  Future<void> updateWallet(WalletsCompanion entry) =>
+      update(wallets).replace(entry);
+
+  Stream<List<WalletBalanceSnapshot>> watchWalletBalances() {
+    return Rx.combineLatest2<List<Wallet>, List<Transaction>,
+        List<WalletBalanceSnapshot>>(
+      (select(wallets)..orderBy([(w) => OrderingTerm.asc(w.createdAt)]))
+          .watch(),
+      select(transactions).watch(),
+      (walletRows, txRows) {
+        final txByWallet = <String, List<Transaction>>{};
+        for (final tx in txRows) {
+          txByWallet.putIfAbsent(tx.walletId, () => <Transaction>[]).add(tx);
+        }
+
+        return walletRows.map((wallet) {
+          final walletTxs = txByWallet[wallet.id] ?? const <Transaction>[];
+          var delta = 0;
+
+          for (final tx in walletTxs) {
+            switch (tx.type) {
+              case 'income':
+                delta += tx.amount;
+                break;
+              case 'expense':
+                delta -= tx.amount;
+                break;
+              case 'transfer':
+                if (tx.id.startsWith(TransferMetadata.transferOutPrefix)) {
+                  delta -= tx.amount;
+                } else if (tx.id
+                    .startsWith(TransferMetadata.transferInPrefix)) {
+                  delta += tx.amount;
+                }
+                break;
+            }
+          }
+
+          return WalletBalanceSnapshot(
+            wallet: wallet,
+            currentBalance: wallet.openingBalance + delta,
+          );
+        }).toList();
+      },
+    );
+  }
 
   // ── Overspend alert ────────────────────────────────────────────────────────
 
@@ -477,22 +552,6 @@ class AppDatabase extends _$AppDatabase {
     final overBy = expense - limitAmount;
     final alertId = 'alert_overspend_$month';
 
-    String fmt(int v) {
-      // Format as vi_VN currency-like (no decimals) with ₫ suffix.
-      final s = v.toString();
-      final out = StringBuffer();
-      int group = 0;
-      for (int i = s.length - 1; i >= 0; i--) {
-        out.write(s[i]);
-        group++;
-        if (group == 3 && i != 0) {
-          out.write(',');
-          group = 0;
-        }
-      }
-      return out.toString().split('').reversed.join();
-    }
-
     // If already exists, do nothing (avoid spamming).
     final existing = await (select(alertEvents)
           ..where((a) => a.id.equals(alertId)))
@@ -505,7 +564,7 @@ class AppDatabase extends _$AppDatabase {
         type: 'overspend',
         titleVi: 'Vượt ngân sách tháng',
         bodyVi:
-            'Tháng $month: chi ${fmt(expense)}₫, ngân sách ${fmt(limitAmount)}₫ (vượt ${fmt(overBy)}₫).',
+            'Tháng $month: chi ${formatVnd(expense)}₫, ngân sách ${formatVnd(limitAmount)}₫ (vượt ${formatVnd(overBy)}₫).',
         metaJson: Value(
           '{"month":"$month","expense":$expense,"limit":$limitAmount,"overBy":$overBy}',
         ),
@@ -534,6 +593,16 @@ class TransactionItem {
   final Transaction tx;
   final Wallet wallet;
   final Category category;
+}
+
+class WalletBalanceSnapshot {
+  const WalletBalanceSnapshot({
+    required this.wallet,
+    required this.currentBalance,
+  });
+
+  final Wallet wallet;
+  final int currentBalance;
 }
 
 class TotalBudget {
@@ -631,5 +700,3 @@ class _IncomeExpense {
     );
   }
 }
-
-

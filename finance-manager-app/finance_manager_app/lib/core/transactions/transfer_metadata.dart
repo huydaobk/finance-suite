@@ -53,7 +53,8 @@ class TransferMetadata {
     final fromWalletId = match.group(2)?.trim();
     final toWalletId = match.group(3)?.trim();
 
-    if ([pairId, fromWalletId, toWalletId].any((value) => value == null || value.isEmpty)) {
+    if ([pairId, fromWalletId, toWalletId]
+        .any((value) => value == null || value.isEmpty)) {
       return null;
     }
 

@@ -5,6 +5,7 @@ mixin WalletsDao on AppDatabase {
     return select(wallets).watch();
   }
 
+  @override
   Future<Wallet> getWalletById(String id) {
     return (select(wallets)..where((tbl) => tbl.id.equals(id))).getSingle();
   }
@@ -13,6 +14,7 @@ mixin WalletsDao on AppDatabase {
     return into(wallets).insert(entry);
   }
 
+  @override
   Future<void> updateWallet(WalletsCompanion entry) {
     return update(wallets).replace(entry);
   }
