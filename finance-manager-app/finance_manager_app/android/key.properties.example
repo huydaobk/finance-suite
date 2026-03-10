@@ -1,0 +1,5 @@
+# Copy file này thành android/key.properties và điền secret thật.
+storeFile=/absolute/path/to/upload-keystore.jks
+storePassword=your_store_password
+keyAlias=upload
+keyPassword=your_key_password

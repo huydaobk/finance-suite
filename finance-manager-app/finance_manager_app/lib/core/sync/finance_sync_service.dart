@@ -1,46 +1,32 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Kết nối tới finance-api để pull giao dịch từ Telegram.
 class FinanceSyncService {
-  static const _baseUrl = 'http://14.225.222.53:8089'; // VPS via nginx
-  static const _username = 'huy';
-  static const _password = 'Finance@2026';
+  static const String _baseUrl = String.fromEnvironment(
+    'FINANCE_API_URL',
+    defaultValue: 'http://10.0.2.2:8089',
+  );
   static const _prefKeyToken = 'finance_api_token';
   static const _prefKeyLastSync = 'finance_api_last_sync';
 
+  Uri get _syncUri => Uri.parse('$_baseUrl/sync');
+  Uri get _ackUri => Uri.parse('$_baseUrl/sync/ack');
+
   /// Lấy JWT token (cache vào SharedPreferences).
+  ///
+  /// Hiện tại app chỉ dùng token đã lưu sẵn ở local. Không commit credential vào mã nguồn.
+  /// Nếu sau này cần login tương tác, nên chuyển sang flow nhập token / refresh token
+  /// hoặc secure storage thay vì hardcode username/password.
   Future<String> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
     final cached = prefs.getString(_prefKeyToken);
     if (cached != null && cached.isNotEmpty) return cached;
-    return _login(prefs);
-  }
-
-  Future<String> _login(SharedPreferences prefs) async {
-    final resp = await http
-        .post(
-          Uri.parse('$_baseUrl/auth/login'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'username': _username, 'password': _password}),
-        )
-        .timeout(const Duration(seconds: 10));
-
-    if (resp.statusCode != 200) {
-      throw const FinanceSyncException(
-        'Đăng nhập finance-api thất bại: kiểm tra lại finance-api hoặc tài khoản.',
-      );
-    }
-
-    final data = jsonDecode(resp.body);
-    final token = data['access_token'];
-    if (token is! String || token.isEmpty) {
-      throw const FinanceSyncException('Finance API không trả access_token hợp lệ.');
-    }
-
-    await prefs.setString(_prefKeyToken, token);
-    return token;
+    throw const FinanceSyncException(
+      'Chưa có token đồng bộ. Hãy cấu hình FINANCE_API_URL và lưu token trước khi sync.',
+    );
   }
 
   /// Pull danh sách giao dịch chưa sync từ server.
@@ -49,7 +35,7 @@ class FinanceSyncService {
     final lastSync = prefs.getString(_prefKeyLastSync);
 
     Future<List<InboxTx>> runWithToken(String token) async {
-      final uri = Uri.parse('$_baseUrl/sync').replace(
+      final uri = _syncUri.replace(
         queryParameters:
             lastSync != null && lastSync.isNotEmpty ? {'since': lastSync} : null,
       );
@@ -83,8 +69,9 @@ class FinanceSyncService {
     } on FinanceSyncException catch (e) {
       if (!e.message.contains('(401)')) rethrow;
       await prefs.remove(_prefKeyToken);
-      token = await _login(prefs);
-      return runWithToken(token);
+      throw const FinanceSyncException(
+        'Token sync đã hết hạn hoặc không hợp lệ (401). Hãy cấp token mới rồi thử lại.',
+      );
     }
   }
 
@@ -97,7 +84,7 @@ class FinanceSyncService {
     Future<void> runWithToken(String token) async {
       final resp = await http
           .post(
-            Uri.parse('$_baseUrl/sync/ack'),
+            _ackUri,
             headers: {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $token',
@@ -124,8 +111,9 @@ class FinanceSyncService {
     } on FinanceSyncException catch (e) {
       if (!e.message.contains('(401)')) rethrow;
       await prefs.remove(_prefKeyToken);
-      token = await _login(prefs);
-      await runWithToken(token);
+      throw const FinanceSyncException(
+        'Token sync đã hết hạn hoặc không hợp lệ (401). Hãy cấp token mới rồi thử lại.',
+      );
     }
   }
 }

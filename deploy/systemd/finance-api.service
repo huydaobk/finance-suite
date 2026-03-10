@@ -1,0 +1,50 @@
+# Template systemd unit for Finance API
+# Copy to: /etc/systemd/system/finance-api.service
+# Then: sudo systemctl daemon-reload && sudo systemctl enable --now finance-api
+
+[Unit]
+Description=Finance API (FastAPI)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=finance
+Group=finance
+WorkingDirectory=/opt/finance-suite/finance-api
+
+# Cách an toàn: secrets nằm trong file riêng, không commit.
+# Tạo file: /etc/finance/finance-api.env (chmod 600, owner root:finance)
+EnvironmentFile=/etc/finance/finance-api.env
+
+# (Tuỳ chọn) hardening cơ bản
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+# Cho phép đọc secrets + ghi log runtime (nếu cần)
+ReadWritePaths=/var/log/finance-api /var/lib/finance-api
+
+# Python venv đặt cạnh source (khuyến nghị khi deploy)
+ExecStart=/opt/finance-suite/finance-api/.venv/bin/uvicorn finance_api.app:app --host 127.0.0.1 --port 8088
+
+Restart=on-failure
+RestartSec=2
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+# Log ra journald (xem bằng journalctl)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

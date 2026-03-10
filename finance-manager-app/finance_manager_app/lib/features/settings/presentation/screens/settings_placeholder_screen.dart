@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../budgets/presentation/screens/budgets_screen.dart';
 
@@ -26,10 +27,18 @@ class SettingsPlaceholderScreen extends StatelessWidget {
             },
           ),
           const Divider(height: 1),
-          const ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('Phiên bản'),
-            subtitle: Text('Local dev'),
+          FutureBuilder<PackageInfo>(
+            future: PackageInfo.fromPlatform(),
+            builder: (context, snapshot) {
+              final versionText = snapshot.hasData
+                  ? '${snapshot.data!.version}+${snapshot.data!.buildNumber}'
+                  : 'Đang tải...';
+              return ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('Phiên bản'),
+                subtitle: Text(versionText),
+              );
+            },
           ),
         ],
       ),

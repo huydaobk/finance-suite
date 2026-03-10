@@ -1,9 +1,7 @@
 import 'package:drift/drift.dart' as drift;
 import 'package:drift/native.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:finance_manager_app/core/db/app_database.dart';
-import 'package:finance_manager_app/features/transactions/presentation/screens/transactions_screen.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

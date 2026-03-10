@@ -5,7 +5,6 @@
 .pub-cache/
 .pub/
 build/
-android/
 ios/
 linux/
 macos/
@@ -14,3 +13,6 @@ web/
 
 # Local notes (not part of app source)
 memory/
+
+# Android release signing
+android/key.properties

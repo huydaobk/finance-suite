@@ -1,0 +1,43 @@
+name: finance-api CI
+
+on:
+  push:
+    paths:
+      - 'finance-api/**'
+      - '.github/workflows/finance-api-ci.yml'
+  pull_request:
+    paths:
+      - 'finance-api/**'
+      - '.github/workflows/finance-api-ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: finance-api
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: |
+            finance-api/requirements.txt
+            finance-api/pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install 'bcrypt<5' pytest httpx ruff
+
+      - name: Lint with ruff
+        run: ruff check .
+
+      - name: Run pytest
+        run: pytest -q

@@ -1,0 +1,39 @@
+# Template systemd unit for Finance Telegram Bot
+# Copy to: /etc/systemd/system/finance-bot.service
+# Then: sudo systemctl daemon-reload && sudo systemctl enable --now finance-bot
+
+[Unit]
+Description=Finance Telegram Bot
+After=network-online.target finance-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=finance
+Group=finance
+WorkingDirectory=/opt/finance-suite/finance-bot
+
+# Tạo file: /etc/finance/finance-bot.env (chmod 600, owner root:finance)
+EnvironmentFile=/etc/finance/finance-bot.env
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+LockPersonality=true
+RestrictSUIDSGID=true
+
+ReadWritePaths=/var/log/finance-bot /var/lib/finance-bot
+
+ExecStart=/opt/finance-suite/finance-bot/.venv/bin/python -u bot.py
+
+Restart=on-failure
+RestartSec=2
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
