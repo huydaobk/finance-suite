@@ -31,3 +31,7 @@ __pycache__/
 # Kotlin/Gradle caches
 **/.kotlin/
 *.salive
+
+# Local secret vaults / release artifacts
+SECRETS__*.txt
+*release*.apk
