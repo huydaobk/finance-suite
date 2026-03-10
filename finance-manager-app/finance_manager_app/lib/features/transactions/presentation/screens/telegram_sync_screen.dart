@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/db/app_database.dart';
@@ -16,6 +17,9 @@ class TelegramSyncScreen extends StatefulWidget {
 class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
   final _svc = FinanceSyncService();
 
+  final _tokenCtrl = TextEditingController();
+  final _urlCtrl = TextEditingController();
+
   List<InboxTx> _pending = [];
   Set<int> _selected = {};
   bool _loading = false;
@@ -25,7 +29,28 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
   @override
   void initState() {
     super.initState();
+    _loadPrefs();
     _fetch();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    _tokenCtrl.text = prefs.getString('finance_api_token') ?? '';
+    _urlCtrl.text = prefs.getString('finance_api_url') ?? '';
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _savePrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = _tokenCtrl.text.trim();
+    final url = _urlCtrl.text.trim();
+    if (token.isNotEmpty) await prefs.setString('finance_api_token', token);
+    if (url.isNotEmpty) await prefs.setString('finance_api_url', url);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã lưu cấu hình đồng bộ ✅')),
+      );
+    }
   }
 
   Future<void> _fetch() async {
@@ -180,9 +205,40 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
                       const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
                       const SizedBox(height: 12),
                       Text(_error!, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Column(
+                          children: [
+                            TextField(
+                              controller: _urlCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'FINANCE_API_URL',
+                                hintText:
+                                    'vd: http://14.225.222.53:8089 hoặc https://your-domain',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _tokenCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Token đồng bộ (JWT)',
+                                hintText: 'Dán token vào đây',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                       const SizedBox(height: 12),
                       FilledButton(
-                          onPressed: _fetch, child: const Text('Thử lại')),
+                        onPressed: () async {
+                          await _savePrefs();
+                          await _fetch();
+                        },
+                        child: const Text('Lưu & Thử lại'),
+                      ),
                     ],
                   ),
                 )

@@ -5,15 +5,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Kết nối tới finance-api để pull giao dịch từ Telegram.
 class FinanceSyncService {
-  static const String _baseUrl = String.fromEnvironment(
-    'FINANCE_API_URL',
-    defaultValue: 'http://10.0.2.2:8089',
-  );
   static const _prefKeyToken = 'finance_api_token';
   static const _prefKeyLastSync = 'finance_api_last_sync';
+  static const _prefKeyBaseUrl = 'finance_api_url';
 
-  Uri get _syncUri => Uri.parse('$_baseUrl/sync');
-  Uri get _ackUri => Uri.parse('$_baseUrl/sync/ack');
+  Future<String> _getBaseUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_prefKeyBaseUrl);
+    if (saved != null && saved.trim().isNotEmpty) return saved.trim();
+
+    // fallback build-time define (optional)
+    const defined = String.fromEnvironment('FINANCE_API_URL', defaultValue: '');
+    if (defined.trim().isNotEmpty) return defined.trim();
+
+    // dev fallback
+    return 'http://10.0.2.2:8089';
+  }
+
+  Future<Uri> get _syncUri async => Uri.parse('${await _getBaseUrl()}/sync');
+  Future<Uri> get _ackUri async => Uri.parse('${await _getBaseUrl()}/sync/ack');
 
   /// Lấy JWT token (cache vào SharedPreferences).
   ///
@@ -35,15 +45,18 @@ class FinanceSyncService {
     final lastSync = prefs.getString(_prefKeyLastSync);
 
     Future<List<InboxTx>> runWithToken(String token) async {
-      final uri = _syncUri.replace(
+      final base = await _syncUri;
+      final uri = base.replace(
         queryParameters: lastSync != null && lastSync.isNotEmpty
             ? {'since': lastSync}
             : null,
       );
-      final resp = await http.get(
-        uri,
-        headers: {'Authorization': 'Bearer $token'},
-      ).timeout(const Duration(seconds: 10));
+      final resp = await http
+          .get(
+            uri,
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (resp.statusCode != 200) {
         throw FinanceSyncException(
@@ -83,9 +96,10 @@ class FinanceSyncService {
     final prefs = await SharedPreferences.getInstance();
 
     Future<void> runWithToken(String token) async {
+      final ackUri = await _ackUri;
       final resp = await http
           .post(
-            _ackUri,
+            ackUri,
             headers: {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $token',
