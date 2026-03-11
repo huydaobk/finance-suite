@@ -1,6 +1,5 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/db/app_database.dart';
@@ -26,9 +25,11 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
   bool _loading = false;
   bool _importing = false;
   bool _loggingIn = false;
+  bool _testingLogin = false;
   bool _obscurePassword = true;
   bool _hasToken = false;
   String? _error;
+  String? _statusMessage;
 
   @override
   void initState() {
@@ -52,41 +53,57 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
   }
 
   Future<void> _loadPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    _urlCtrl.text = prefs.getString('finance_api_url') ?? '';
-    _hasToken = await _svc.hasSavedToken();
+    final authState = await _svc.getSavedAuthState();
+    _urlCtrl.text = authState.baseUrl;
+    _usernameCtrl.text = authState.username;
+    _hasToken = authState.hasToken;
     if (mounted) setState(() {});
   }
 
-  Future<void> _handleUnauthorized() async {
-    await _svc.clearAuth();
+  Future<void> _handleLogout(
+      {String? message, bool clearCredentials = false}) async {
+    await _svc.clearAuth(clearCredentials: clearCredentials);
     _pending = [];
     _selected.clear();
     _hasToken = false;
+    if (message != null) {
+      _error = message;
+      _statusMessage = null;
+    }
     if (mounted) setState(() {});
   }
 
-  Future<void> _login() async {
+  Future<void> _login({bool testOnly = false}) async {
     FocusScope.of(context).unfocus();
     setState(() {
-      _loggingIn = true;
+      if (testOnly) {
+        _testingLogin = true;
+      } else {
+        _loggingIn = true;
+      }
       _error = null;
+      _statusMessage = null;
     });
 
     try {
-      await _svc.login(
+      final result = await _svc.login(
         baseUrl: _urlCtrl.text,
         username: _usernameCtrl.text,
         password: _passwordCtrl.text,
+        persistCredentials: true,
       );
-      _passwordCtrl.clear();
       _hasToken = true;
+      _statusMessage = testOnly
+          ? 'Test login thành công. Token ${result.tokenType} có hạn ${result.expiresInDays ?? '?'} ngày.'
+          : 'Đăng nhập thành công ✅';
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đăng nhập thành công ✅')),
+          SnackBar(content: Text(_statusMessage!)),
         );
       }
-      await _fetch();
+      if (!testOnly) {
+        await _fetch();
+      }
     } on FinanceSyncException catch (e) {
       setState(() {
         _hasToken = false;
@@ -99,7 +116,10 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
       });
     } finally {
       if (mounted) {
-        setState(() => _loggingIn = false);
+        setState(() {
+          _loggingIn = false;
+          _testingLogin = false;
+        });
       }
     }
   }
@@ -108,6 +128,7 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _statusMessage = null;
     });
     try {
       final items = await _svc.fetchPending();
@@ -115,10 +136,15 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
         _hasToken = true;
         _pending = items;
         _selected = items.map((e) => e.id).toSet();
+        if (items.isEmpty) {
+          _statusMessage =
+              'Đồng bộ OK. Hiện chưa có giao dịch mới từ Telegram.';
+        }
       });
     } on FinanceSyncException catch (e) {
-      if (e.message.contains('(401)')) {
-        await _handleUnauthorized();
+      if (e.message.contains('tự đăng nhập lại không thành công') ||
+          e.message.contains('Vui lòng nhập lại URL, username và password')) {
+        await _handleLogout(message: e.message);
       }
       setState(() => _error = e.message);
     } catch (e) {
@@ -135,6 +161,7 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
     setState(() {
       _importing = true;
       _error = null;
+      _statusMessage = null;
     });
 
     try {
@@ -227,8 +254,9 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
         Navigator.of(context).pop(true);
       }
     } on FinanceSyncException catch (e) {
-      if (e.message.contains('(401)')) {
-        await _handleUnauthorized();
+      if (e.message.contains('tự đăng nhập lại không thành công') ||
+          e.message.contains('Vui lòng nhập lại URL, username và password')) {
+        await _handleLogout(message: e.message);
       }
       setState(() => _error = e.message);
       if (mounted) {
@@ -247,6 +275,45 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
     } finally {
       if (mounted) setState(() => _importing = false);
     }
+  }
+
+  Widget _buildInfoBanner() {
+    final message = _error ?? _statusMessage;
+    if (message == null) return const SizedBox.shrink();
+
+    final isError = _error != null;
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Material(
+        color: isError ? scheme.errorContainer : scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Icon(
+                isError ? Icons.error_outline : Icons.info_outline,
+                color: isError
+                    ? scheme.onErrorContainer
+                    : scheme.onSecondaryContainer,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    color: isError
+                        ? scheme.onErrorContainer
+                        : scheme.onSecondaryContainer,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildLoginForm() {
@@ -268,10 +335,11 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Nhập địa chỉ finance-api và tài khoản của anh. App sẽ tự lấy token, không cần dán JWT thủ công nữa.',
+                'Phương án C: app tự lưu URL + token, đồng thời lưu credential để auto re-login khi token bị 401.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
+              _buildInfoBanner(),
               const SizedBox(height: 24),
               TextField(
                 controller: _urlCtrl,
@@ -296,9 +364,12 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
               TextField(
                 controller: _passwordCtrl,
                 obscureText: _obscurePassword,
-                onSubmitted: (_) => _loggingIn ? null : _login(),
+                onSubmitted: (_) =>
+                    (_loggingIn || _testingLogin) ? null : _login(),
                 decoration: InputDecoration(
                   labelText: 'Password',
+                  helperText:
+                      'Password được lưu local để app tự đăng nhập lại khi token hết hạn.',
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
                     tooltip: _obscurePassword ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
@@ -313,25 +384,42 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
                   ),
                 ),
               ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                  textAlign: TextAlign.center,
-                ),
-              ],
               const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: _loggingIn ? null : _login,
-                icon: _loggingIn
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.login),
-                label: Text(_loggingIn ? 'Đang đăng nhập...' : 'Đăng nhập'),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: (_loggingIn || _testingLogin)
+                          ? null
+                          : () => _login(testOnly: true),
+                      icon: _testingLogin
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.health_and_safety_outlined),
+                      label: Text(
+                        _testingLogin ? 'Đang test...' : 'Test Login',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: (_loggingIn || _testingLogin) ? null : _login,
+                      icon: _loggingIn
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.login),
+                      label:
+                          Text(_loggingIn ? 'Đang đăng nhập...' : 'Đăng nhập'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -341,13 +429,24 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
   }
 
   Widget _buildEmptyState() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.check_circle_outline, size: 48, color: Colors.green),
-          SizedBox(height: 12),
-          Text('Không có giao dịch mới từ Telegram'),
+          const Icon(Icons.check_circle_outline, size: 48, color: Colors.green),
+          const SizedBox(height: 12),
+          const Text('Không có giao dịch mới từ Telegram'),
+          if (_statusMessage != null) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                _statusMessage!,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -356,35 +455,7 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
   Widget _buildPendingList() {
     return Column(
       children: [
-        if (_error != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Material(
-              color: Theme.of(context).colorScheme.errorContainer,
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: Theme.of(context).colorScheme.onErrorContainer,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _error!,
-                        style: TextStyle(
-                          color:
-                              Theme.of(context).colorScheme.onErrorContainer,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+        _buildInfoBanner(),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
           child: Row(
@@ -395,8 +466,8 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
               ),
               const Spacer(),
               TextButton(
-                onPressed: () =>
-                    setState(() => _selected = _pending.map((e) => e.id).toSet()),
+                onPressed: () => setState(
+                    () => _selected = _pending.map((e) => e.id).toSet()),
                 child: const Text('Chọn tất cả'),
               ),
               TextButton(
@@ -474,13 +545,13 @@ class _TelegramSyncScreenState extends State<TelegramSyncScreen> {
             ),
           if (!showLogin)
             IconButton(
-              onPressed: (_loading || _loggingIn)
+              onPressed: (_loading || _loggingIn || _testingLogin)
                   ? null
                   : () async {
-                      await _handleUnauthorized();
-                      setState(() {
-                        _error = 'Đã đăng xuất sync. Vui lòng đăng nhập lại.';
-                      });
+                      await _handleLogout(
+                        message: 'Đã đăng xuất sync. Vui lòng đăng nhập lại.',
+                        clearCredentials: true,
+                      );
                     },
               icon: const Icon(Icons.logout),
               tooltip: 'Đăng xuất sync',

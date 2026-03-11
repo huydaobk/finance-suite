@@ -35,3 +35,11 @@ __pycache__/
 # Local secret vaults / release artifacts
 SECRETS__*.txt
 *release*.apk
+
+# Normalized ignores for secrets and build artifacts
+*.env
+venv/
+.venv/
+.pytest_cache/
+dist/
+*.apk

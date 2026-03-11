@@ -11,6 +11,8 @@ class FinanceSyncService {
   static const _prefKeyToken = 'finance_api_token';
   static const _prefKeyLastSync = 'finance_api_last_sync';
   static const _prefKeyBaseUrl = 'finance_api_url';
+  static const _prefKeyUsername = 'finance_api_username';
+  static const _prefKeyPassword = 'finance_api_password';
 
   final http.Client _httpClient;
 
@@ -20,14 +22,20 @@ class FinanceSyncService {
     if (saved != null && saved.trim().isNotEmpty) return saved.trim();
 
     const defined = String.fromEnvironment('FINANCE_API_URL', defaultValue: '');
-    if (defined.trim().isNotEmpty) return defined.trim();
+    if (defined.trim().isNotEmpty) return _normalizeBaseUrl(defined);
 
     return 'http://10.0.2.2:8089';
   }
 
-  Future<Uri> get _syncUri async => Uri.parse('${await _getBaseUrl()}/sync');
-  Future<Uri> get _ackUri async => Uri.parse('${await _getBaseUrl()}/sync/ack');
-  Future<Uri> get _loginUri async => Uri.parse('${await _getBaseUrl()}/auth/login');
+  Future<String> _getNormalizedBaseUrl() async =>
+      _normalizeBaseUrl(await _getBaseUrl());
+
+  Future<Uri> get _syncUri async =>
+      Uri.parse('${await _getNormalizedBaseUrl()}/sync');
+  Future<Uri> get _ackUri async =>
+      Uri.parse('${await _getNormalizedBaseUrl()}/sync/ack');
+  Future<Uri> get _loginUri async =>
+      Uri.parse('${await _getNormalizedBaseUrl()}/auth/login');
 
   Future<String> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -38,9 +46,19 @@ class FinanceSyncService {
     );
   }
 
+  String _normalizeBaseUrl(String baseUrl) {
+    var s = baseUrl.trim();
+    if (s.isEmpty) return s;
+    // Remove trailing slashes to avoid //auth/login causing 404 on nginx
+    while (s.endsWith('/')) {
+      s = s.substring(0, s.length - 1);
+    }
+    return s;
+  }
+
   Future<void> saveBaseUrl(String baseUrl) async {
     final prefs = await SharedPreferences.getInstance();
-    final normalized = baseUrl.trim();
+    final normalized = _normalizeBaseUrl(baseUrl);
     if (normalized.isEmpty) {
       await prefs.remove(_prefKeyBaseUrl);
       return;
@@ -48,9 +66,13 @@ class FinanceSyncService {
     await prefs.setString(_prefKeyBaseUrl, normalized);
   }
 
-  Future<void> clearAuth() async {
+  Future<void> clearAuth({bool clearCredentials = false}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_prefKeyToken);
+    if (clearCredentials) {
+      await prefs.remove(_prefKeyUsername);
+      await prefs.remove(_prefKeyPassword);
+    }
   }
 
   Future<bool> hasSavedToken() async {
@@ -59,10 +81,28 @@ class FinanceSyncService {
     return token != null && token.trim().isNotEmpty;
   }
 
+  Future<bool> hasSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final username = prefs.getString(_prefKeyUsername)?.trim() ?? '';
+    final password = prefs.getString(_prefKeyPassword)?.trim() ?? '';
+    return username.isNotEmpty && password.isNotEmpty;
+  }
+
+  Future<FinanceSyncAuthState> getSavedAuthState() async {
+    final prefs = await SharedPreferences.getInstance();
+    return FinanceSyncAuthState(
+      baseUrl: prefs.getString(_prefKeyBaseUrl)?.trim() ?? '',
+      username: prefs.getString(_prefKeyUsername)?.trim() ?? '',
+      hasToken: (prefs.getString(_prefKeyToken)?.trim() ?? '').isNotEmpty,
+      hasPassword: (prefs.getString(_prefKeyPassword)?.trim() ?? '').isNotEmpty,
+    );
+  }
+
   Future<LoginResult> login({
     required String baseUrl,
     required String username,
     required String password,
+    bool persistCredentials = true,
   }) async {
     final normalizedBaseUrl = baseUrl.trim();
     final normalizedUsername = username.trim();
@@ -112,7 +152,32 @@ class FinanceSyncService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefKeyToken, result.token);
     await prefs.setString(_prefKeyBaseUrl, normalizedBaseUrl);
+    if (persistCredentials) {
+      await prefs.setString(_prefKeyUsername, normalizedUsername);
+      await prefs.setString(_prefKeyPassword, normalizedPassword);
+    }
     return result;
+  }
+
+  Future<LoginResult> reloginFromSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final baseUrl = prefs.getString(_prefKeyBaseUrl)?.trim() ?? '';
+    final username = prefs.getString(_prefKeyUsername)?.trim() ?? '';
+    final password = prefs.getString(_prefKeyPassword)?.trim() ?? '';
+
+    if (baseUrl.isEmpty || username.isEmpty || password.isEmpty) {
+      await clearAuth();
+      throw const FinanceSyncException(
+        'Token sync đã hết hạn và app chưa có đủ thông tin để tự đăng nhập lại. Vui lòng nhập lại URL, username và password.',
+      );
+    }
+
+    return login(
+      baseUrl: baseUrl,
+      username: username,
+      password: password,
+      persistCredentials: true,
+    );
   }
 
   Future<List<InboxTx>> fetchPending() async {
@@ -126,12 +191,14 @@ class FinanceSyncService {
             ? {'since': lastSync}
             : null,
       );
-      final resp = await _httpClient
-          .get(
-            uri,
-            headers: {'Authorization': 'Bearer $token'},
-          )
-          .timeout(const Duration(seconds: 10));
+      final resp = await _httpClient.get(
+        uri,
+        headers: {'Authorization': 'Bearer $token'},
+      ).timeout(const Duration(seconds: 10));
+
+      if (resp.statusCode == 401) {
+        throw const FinanceSyncUnauthorizedException();
+      }
 
       if (resp.statusCode != 200) {
         throw FinanceSyncException(
@@ -155,15 +222,19 @@ class FinanceSyncService {
           .toList();
     }
 
-    final token = await _getToken();
     try {
+      final token = await _getToken();
       return await runWithToken(token);
-    } on FinanceSyncException catch (e) {
-      if (!e.message.contains('(401)')) rethrow;
+    } on FinanceSyncUnauthorizedException {
       await clearAuth();
-      throw const FinanceSyncException(
-        'Phiên đăng nhập sync đã hết hạn hoặc không hợp lệ (401). Vui lòng đăng nhập lại.',
-      );
+      try {
+        final loginResult = await reloginFromSavedCredentials();
+        return await runWithToken(loginResult.token);
+      } on FinanceSyncException catch (e) {
+        throw FinanceSyncException(
+          'Phiên đăng nhập sync đã hết hạn và app tự đăng nhập lại không thành công. ${e.message}',
+        );
+      }
     }
   }
 
@@ -185,6 +256,10 @@ class FinanceSyncService {
           )
           .timeout(const Duration(seconds: 10));
 
+      if (resp.statusCode == 401) {
+        throw const FinanceSyncUnauthorizedException();
+      }
+
       if (resp.statusCode != 200) {
         throw FinanceSyncException(
           _buildApiError(
@@ -200,15 +275,19 @@ class FinanceSyncService {
       );
     }
 
-    final token = await _getToken();
     try {
+      final token = await _getToken();
       await runWithToken(token);
-    } on FinanceSyncException catch (e) {
-      if (!e.message.contains('(401)')) rethrow;
+    } on FinanceSyncUnauthorizedException {
       await clearAuth();
-      throw const FinanceSyncException(
-        'Phiên đăng nhập sync đã hết hạn hoặc không hợp lệ (401). Vui lòng đăng nhập lại.',
-      );
+      try {
+        final loginResult = await reloginFromSavedCredentials();
+        await runWithToken(loginResult.token);
+      } on FinanceSyncException catch (e) {
+        throw FinanceSyncException(
+          'Phiên đăng nhập sync đã hết hạn và app tự đăng nhập lại không thành công. ${e.message}',
+        );
+      }
     }
   }
 
@@ -238,6 +317,25 @@ class FinanceSyncException implements Exception {
   String toString() => message;
 }
 
+class FinanceSyncUnauthorizedException extends FinanceSyncException {
+  const FinanceSyncUnauthorizedException()
+      : super('Phiên đăng nhập sync đã hết hạn hoặc không hợp lệ (401).');
+}
+
+class FinanceSyncAuthState {
+  const FinanceSyncAuthState({
+    required this.baseUrl,
+    required this.username,
+    required this.hasToken,
+    required this.hasPassword,
+  });
+
+  final String baseUrl;
+  final String username;
+  final bool hasToken;
+  final bool hasPassword;
+}
+
 class LoginResult {
   const LoginResult({
     required this.token,
@@ -250,10 +348,10 @@ class LoginResult {
   final int? expiresInDays;
 
   factory LoginResult.fromJson(Map<String, dynamic> json) {
-    final dynamic tokenValue = json['access_token'] ?? json['token'];
+    final dynamic tokenValue = json['access_token'];
     if (tokenValue is! String || tokenValue.trim().isEmpty) {
       throw const FinanceSyncException(
-        'Response /auth/login thiếu access_token/token hợp lệ.',
+        'Response /auth/login thiếu access_token hợp lệ.',
       );
     }
 
